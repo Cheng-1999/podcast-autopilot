@@ -94,22 +94,20 @@ every stage re-ran from scratch.
   next un-cached stage instead of re-transcribing from the top — the same
   caching that makes "Reapply" cheap also made the dashboard resilient to
   the process being killed and restarted mid-run.
-- **Review**: in the dashboard review screen, opened both parts' plan/waveform. EP3-1 proposed one disabled
-  filler (`filler-0001`, `然後` p=0.88); EP3-2 proposed one disabled filler
-   (`filler-0001`, `然後` p=0.54). Toggled EP3-1's disabled filler on and
-   back off with the UI checkbox and Save button (the on-disk `plan.json`
-   round-tripped both times), left it disabled, and confirmed EP3-2's filler
-   was enabled in the UI.
-- **Reapply**: clicked the dashboard's `儲存並重新套用` button; the page returned to episode detail with status `待審查`.
-   Caching worked as designed — `probe` / `clean` /
-  `plan-pauses` / `transcribe` / `plan-fillers` stayed `cached` for both
-  parts, EP3-1's `audit` / `apply` stayed `cached` (its plan did not
-  change), and only EP3-2's `audit` (0.19s) and `apply` (15.80s) re-ran,
-  followed by a full `assemble` (378.89s, both parts are joined into one
-  file so any plan change forces a re-encode) - 397s wall for the whole
-  reapply job, per `RUN_REPORT.md`'s stage table.
+- **Review**: in the dashboard review screen, opened both parts' plan/waveform.
+  EP3-1 had two disabled filler proposals (`filler-0001` p=0.95 and
+  `filler-0002` p=0.82; both `然後`), while EP3-2 had no filler proposal in
+  the final cached plan.
+  Enabled EP3-1's `filler-0001` with the UI checkbox and Save button; the
+  on-disk `plan.json` changed from `enabled: false` to `enabled: true`.
+- **Reapply**: clicked the dashboard's `儲存並重新套用` button after enabling
+  EP3-1's filler; the page returned to episode detail with status `待審查`.
+  The browser-driven check completed the reapply through the UI and left the
+  selected filler enabled in the saved plan. Caching kept the unchanged
+  stages cached and re-ran audit/apply for the changed plan before assembling
+  the final MP3.
 - **Deliverables**: opened the dashboard Deliverables page; its audio control
-   reported 2426.76s, and browser playback from 5s advanced to 6.26s after 3s
+   reported 2426.98s, and browser playback from 5s advanced to 7.03s after 3s
    while `paused=false`. Supplemental `ffprobe` found 2426.8s (~40.4 min),
   96 kbps mono, -17.4 LUFS / -1.6 dBTP, ID3 tags (`title`/`artist`/`album`/
   `comment`) correctly populated from the episode manifest's `tags`.
