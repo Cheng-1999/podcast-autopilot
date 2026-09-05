@@ -1,0 +1,39 @@
+/* desk-dense design tokens */
+:root {
+  /* Surfaces */
+  --surface-bg: #0F1216;
+  --surface-panel: #14181E;
+  --surface-elevated: #1A1F27;
+  --surface-hover: rgba(255, 255, 255, 0.04);
+  --surface-active: rgba(76, 141, 255, 0.12);
+
+  /* Typography Colors */
+  --text-primary: #DDE1E6;
+  --text-muted: #8B93A1;
+
+  /* Semantic Colors */
+  --semantic-green: #2EBD85;
+  --semantic-red: #E5484D;
+  --semantic-amber: #F5A524;
+  --semantic-blue: #4C8DFF;
+
+  /* Borders & Radii */
+  --border-subtle: 1px solid rgba(255, 255, 255, 0.1);
+  --border-color: rgba(255, 255, 255, 0.1);
+  --radius-max: 2px;
+
+  /* Typography Scale */
+  --font-size-xs: 11px;
+  --font-size-sm: 12px;
+  --font-size-base: 13px;
+  --font-size-md: 14px;
+  --font-size-lg: 15px;
+
+  /* Font Families */
+  --font-sans: "IBM Plex Sans", "Noto Sans TC", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", monospace;
+
+  /* Layout Metrics */
+  --row-height: 30px;
+  --status-bar-height: 32px;
+}

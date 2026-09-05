@@ -18,3 +18,4 @@ episodes/
 media/
 web/dist/
 web/node_modules/
+*.tsbuildinfo

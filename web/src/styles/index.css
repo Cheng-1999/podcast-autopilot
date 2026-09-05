@@ -1,0 +1,181 @@
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/500.css";
+@import "@fontsource/ibm-plex-sans/600.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+@import "@fontsource/noto-sans-tc/400.css";
+@import "@fontsource/noto-sans-tc/500.css";
+@import "./tokens.css";
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  background-color: var(--surface-bg);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-base);
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--semantic-blue);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+/* Tabular mono numbers and stages */
+.mono,
+.tabular-nums {
+  font-family: var(--font-mono);
+  font-feature-settings: "tnum" 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 11px uppercase label */
+.label-caps {
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+/* 6px Status dot */
+.status-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.status-dot.green { background-color: var(--semantic-green); }
+.status-dot.red { background-color: var(--semantic-red); }
+.status-dot.amber { background-color: var(--semantic-amber); }
+.status-dot.blue { background-color: var(--semantic-blue); }
+.status-dot.muted { background-color: var(--text-muted); }
+
+/* Value flash on change: 120ms background pulse */
+@keyframes pulse-change {
+  0% { background-color: rgba(76, 141, 255, 0.25); }
+  100% { background-color: transparent; }
+}
+.flash-pulse {
+  animation: pulse-change 120ms ease-out;
+}
+
+/* Keyboard hint badge */
+.kbd-hint {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 4px;
+  background-color: var(--surface-elevated);
+  border: var(--border-subtle);
+  border-radius: var(--radius-max);
+  color: var(--text-muted);
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+/* Flat dense button */
+.dense-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-sm);
+  background-color: var(--surface-panel);
+  color: var(--text-primary);
+  border: var(--border-subtle);
+  border-radius: var(--radius-max);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.dense-btn:hover:not(:disabled) {
+  background-color: var(--surface-hover);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+.dense-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.dense-btn.primary {
+  background-color: var(--semantic-blue);
+  color: #0F1216;
+  font-weight: 500;
+  border-color: var(--semantic-blue);
+}
+.dense-btn.primary:hover:not(:disabled) {
+  background-color: #6ba1ff;
+}
+.dense-btn.danger {
+  background-color: transparent;
+  color: var(--semantic-red);
+  border-color: rgba(229, 72, 77, 0.4);
+}
+.dense-btn.danger:hover:not(:disabled) {
+  background-color: rgba(229, 72, 77, 0.1);
+  border-color: var(--semantic-red);
+}
+
+/* Dense form inputs */
+.dense-select,
+.dense-input {
+  height: 26px;
+  padding: 0 8px;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  background-color: var(--surface-panel);
+  color: var(--text-primary);
+  border: var(--border-subtle);
+  border-radius: var(--radius-max);
+  outline: none;
+}
+.dense-select:focus,
+.dense-input:focus {
+  border-color: var(--semantic-blue);
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--surface-bg);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-max);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* Responsive visibility utilities */
+@media (max-width: 768px) {
+  .hide-on-tablet {
+    display: none !important;
+  }
+}
+
+@media (max-width: 540px) {
+  .hide-on-mobile {
+    display: none !important;
+  }
+}
