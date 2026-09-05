@@ -1,0 +1,6 @@
+podcast-autopilot
+
+This project's overall architecture (probe -> edit-plan -> audit -> apply ->
+receipt, fail-closed validation, ffmpeg-based rendering) uses
+Hao0321/video-autopilot-kit as an architectural reference. No code was
+copied from that project; this is an independent implementation.

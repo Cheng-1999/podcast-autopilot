@@ -1,0 +1,11 @@
+# Copy this file to default.yaml (or another name) and edit as needed.
+# default.yaml itself is git-ignored, so personal paths never get committed.
+
+name: default
+
+# Optional: point at an ffmpeg/ffprobe install directory or exe.
+# Resolution order is: this value > PATH > tools/ffmpeg/bin.
+ffmpeg_path: null
+
+loudness_target_i: -16.0
+loudness_target_tp: -1.5
