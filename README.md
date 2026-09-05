@@ -114,7 +114,8 @@ Streamlit 介面勾選/取消 filler 提案）之後重新執行同一個指令�
 （唯一例外：`plan-pauses` 因版本號或來源改變而重跑時，`plan-fillers` 一定
 跟著重跑，因為新的停頓計畫裡沒有先前合併進去的語助詞提案）。
 `--force` 會忽略所有快取、全部重跑。`--dry-run` 只印出每個 stage 會是
-`ran`／`cached`，不會真的執行任何東西。`--skip STAGE` 讓某個 stage 直接
+`ran`／`cached`，不會真的執行任何東西（預覽寫到 `RUN_REPORT.dry-run.md`，
+不會蓋掉上一次真正執行的 `RUN_REPORT.md`）。`--skip STAGE` 讓某個 stage 直接
 沿用既有輸出檔（若該檔案還不存在會報錯）。
 
 輸出：`out/<episode>/RUN_REPORT.md`，內容包含每個 stage 的耗時、剪掉的
@@ -323,7 +324,8 @@ match and its output files still exist. `--force` ignores the cache and reruns e
 Whenever `plan-pauses` re-runs, `plan-fillers` re-runs too (a rebuilt
 pause plan no longer holds the earlier filler proposals).
 `--dry-run` prints each stage's would-be status (`ran`/`cached`) without
-doing anything. `--skip STAGE` reuses an existing output file for that
+doing anything (the preview goes to `RUN_REPORT.dry-run.md`, so the last
+real run's `RUN_REPORT.md` is kept). `--skip STAGE` reuses an existing output file for that
 stage (errors if it does not exist yet).
 
 Output: `out/<episode>/RUN_REPORT.md` with per-stage timings, seconds

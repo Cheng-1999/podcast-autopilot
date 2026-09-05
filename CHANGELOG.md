@@ -37,9 +37,13 @@ around a `probe -> plan -> audit -> apply -> receipt` architecture
   `--dry-run`, `--skip`, and a generated `RUN_REPORT.md` (per-stage timings,
   seconds removed, loudness before and after cleaning per part and of the
   final MP3, disabled filler proposals, fully pinned re-apply command).
+  `--dry-run` writes its preview to `RUN_REPORT.dry-run.md` so it never
+  overwrites the report of the last real run.
 - `docs/RUNS.md`: timings and results of the real EP3 end-to-end run.
 - `run.ps1`: one-command runner (creates `.venv`, installs dependencies,
-  checks ffmpeg, runs the pipeline).
+  checks ffmpeg, runs the pipeline). With the bundled
+  `examples/episode.example.yaml` it first generates the two 20 s placeholder
+  parts (`make-example`); that manifest's chapters fit inside those 40 s.
 - `app.py`: Streamlit control panel (run, view `RUN_REPORT.md`, review/
   toggle plan items, re-apply).
 - README (zh-TW + English), profile examples, edit-plan JSON schema

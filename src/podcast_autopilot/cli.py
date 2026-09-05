@@ -316,7 +316,10 @@ def run(
         typer.echo(f"RUN FAILED: {exc}", err=True)
         raise typer.Exit(code=1) from exc
 
-    report_path = run_mod.write_run_report(report, report.episode_root / "RUN_REPORT.md")
+    # A preview must not clobber the report of the last real run (its per-stage
+    # timings are not recoverable from the cache), so it gets its own file.
+    report_name = "RUN_REPORT.dry-run.md" if dry_run else "RUN_REPORT.md"
+    report_path = run_mod.write_run_report(report, report.episode_root / report_name)
     typer.echo(f"RUN {'DRY-RUN ' if dry_run else ''}OK: report={report_path}")
     if report.assemble_result:
         typer.echo(f"output: {report.assemble_result['output']}")
