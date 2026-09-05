@@ -15,7 +15,7 @@ stages are cache hits):
 python -m podcast_autopilot run "examples\ep3.local.yaml" --profile default --model small --out-dir "out" --config "profiles\default.example.yaml"
 ```
 
-Input: two raw takes from `C:\Users\a8878\OneDrive\桌面\podcast`, 32-bit float
+Input: two raw takes kept outside the repo (see the gitignored manifest), 32-bit float
 mono 44.1 kHz, no intro/outro/BGM, one chapter marker.
 
 | Part | Duration | Loudness before clean | Loudness after clean | Pause cuts | Filler proposals (disabled) | Seconds removed |

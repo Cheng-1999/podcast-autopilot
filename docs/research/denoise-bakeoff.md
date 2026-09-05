@@ -3,7 +3,7 @@
 **Date**: 2026-09-05  
 **Task ID**: T-0008-P2  
 **Platform**: Windows 11, Python 3.12 (CPython), CPU execution only  
-**Input Test Material**: `C:\Users\a8878\OneDrive\桌面\podcast\EP3-1.wav` (PCM 32-bit float mono @ 44.1 kHz, ~20.4 min total)
+**Input Test Material**: `EP3-1.wav` (a real recording kept outside the repo) (PCM 32-bit float mono @ 44.1 kHz, ~20.4 min total)
 
 ---
 
@@ -24,7 +24,7 @@ This research benchmarks five candidate CPU-based noise-reduction engines on rea
 ## 2. Methodology & Test Artifacts
 
 ### 2.1 Audio Excerpts
-From `C:\Users\a8878\OneDrive\桌面\podcast\EP3-1.wav`, two excerpts were extracted using FFmpeg with lossless stream copying (`-c:a copy`, preserved as 32-bit float mono @ 44.1 kHz):
+From `EP3-1.wav` (a real recording kept outside the repo), two excerpts were extracted using FFmpeg with lossless stream copying (`-c:a copy`, preserved as 32-bit float mono @ 44.1 kHz):
 - **60-Second Speech + Pause Excerpt**: `samples/ep3-1_60s.wav` (Timestamp 15:40–16:40 / 940 s – 1000 s). Contains active dialogue, conversational breaths, and a distinct 5-second pause between 27 s and 32 s (original track 967 s – 972 s).
 - **5-Second Noise-Only Excerpt**: `samples/ep3-1_noise_5s.wav` (Timestamp 967 s – 972 s). The quietest continuous 5-second room-tone interval in the entire 20-minute episode.
 
