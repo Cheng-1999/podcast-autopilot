@@ -21,6 +21,8 @@ around a `probe -> plan -> audit -> apply -> receipt` architecture
   transcription (`opencc s2twp` post-pass), `transcript.{json,srt,md}`.
   Model downloads set `HF_HUB_DISABLE_SYMLINKS=1` so a fresh clone on a
   Windows machine without Developer Mode does not die with WinError 1314.
+  (`huggingface_hub` is left unpinned: 1.30 needs a newer click than the
+  typer 0.12.5 / click 8.1.8 pins allow; the env var works on any version.)
 - `plan-fillers`: filler-word detection from the transcript, written as
   disabled (`enabled: false`) proposals into `plan.json`.
 - `audit`: fail-closed edit-plan validation (source hash, no overlaps,

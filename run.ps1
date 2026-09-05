@@ -33,7 +33,9 @@ if (-not (Test-Path $VenvPython)) {
 Write-Host "Installing dependencies ..."
 & $VenvPython -m pip install --quiet --upgrade pip
 & $VenvPython -m pip install --quiet -r (Join-Path $RepoRoot "requirements.txt")
+if ($LASTEXITCODE -ne 0) { Write-Error "pip install -r requirements.txt failed (exit $LASTEXITCODE)."; exit 1 }
 & $VenvPython -m pip install --quiet -e $RepoRoot
+if ($LASTEXITCODE -ne 0) { Write-Error "pip install -e . failed (exit $LASTEXITCODE)."; exit 1 }
 
 Write-Host "Checking ffmpeg/ffprobe ..."
 & $VenvPython -c "from podcast_autopilot.config import resolve_ffmpeg_binaries; ffmpeg, ffprobe = resolve_ffmpeg_binaries(); print(f'ffmpeg: {ffmpeg}'); print(f'ffprobe: {ffprobe}')"
