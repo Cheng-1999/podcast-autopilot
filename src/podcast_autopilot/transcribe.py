@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -39,6 +40,12 @@ class Segment:
 def _load_model(model_size: str, compute_type: str = "int8"):
     key = (model_size, compute_type)
     if key not in _MODEL_CACHE:
+        # huggingface_hub lays the model cache out with symlinks; on Windows
+        # without Developer Mode / SeCreateSymbolicLinkPrivilege it warns, then
+        # still fails half-way through a download with WinError 1314 (seen on a
+        # fresh clone). Plain file copies in tools/models/ are all we need.
+        os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS", "1")
+        os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
         from faster_whisper import WhisperModel
 
         DEFAULT_MODELS_DIR.mkdir(parents=True, exist_ok=True)

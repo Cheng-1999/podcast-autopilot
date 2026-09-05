@@ -18,6 +18,9 @@ param(
 $ErrorActionPreference = "Stop"
 $RepoRoot = $PSScriptRoot
 Set-Location $RepoRoot
+# Whisper model downloads: no symlinks in the Hugging Face cache (they need
+# Developer Mode / admin on Windows and otherwise fail with WinError 1314).
+$env:HF_HUB_DISABLE_SYMLINKS = "1"
 
 $VenvDir = Join-Path $RepoRoot ".venv"
 $VenvPython = Join-Path $VenvDir "Scripts\python.exe"

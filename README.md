@@ -250,7 +250,9 @@ py -3.12 -m pytest -q
 
 （`faster-whisper` 的 smoke test 會透過 CLI 的 `transcribe` 指令跑
 `small` 模型，第一次執行會從 Hugging Face 下載到 `tools/models/`，
-需要網路；已快取則離線可跑。）
+需要網路；已快取則離線可跑。下載時會設定 `HF_HUB_DISABLE_SYMLINKS=1`：
+Windows 沒開開發人員模式就不能建 symlink，huggingface_hub 會在下載
+途中噴 `WinError 1314`，改用純檔案複製就沒這個問題。）
 
 涵蓋 audit 的拒絕案例（重疊、超出範圍、hash 不符、未知 kind、filler 未落在
 keep 內、filler 互相重疊）、filler 偵測的單元測試（人造 word 清單）、
@@ -270,7 +272,8 @@ source/plan/output + ffmpeg version + post-render loudness).
 
 `transcribe <audio> [--model small|medium]` runs faster-whisper
 (CTranslate2, CPU, `compute_type=int8`, model cached under `tools/models/`,
-gitignored) with `language="zh"`, `word_timestamps=True`, `vad_filter=True`.
+gitignored, downloaded with `HF_HUB_DISABLE_SYMLINKS=1` because symlinks
+need Developer Mode on Windows and otherwise fail with WinError 1314) with `language="zh"`, `word_timestamps=True`, `vad_filter=True`.
 Output leans Simplified even with `language="zh"`, so every segment/word is
 re-run through `opencc s2twp`; the number of characters that pass changed is
 logged as `opencc_chars_changed`. Writes `out/<stem>/transcript.{json,srt,md}`

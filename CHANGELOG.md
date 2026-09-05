@@ -19,6 +19,8 @@ around a `probe -> plan -> audit -> apply -> receipt` architecture
   `run` feeds it.
 - `transcribe`: faster-whisper (CTranslate2, CPU, int8) Traditional Chinese
   transcription (`opencc s2twp` post-pass), `transcript.{json,srt,md}`.
+  Model downloads set `HF_HUB_DISABLE_SYMLINKS=1` so a fresh clone on a
+  Windows machine without Developer Mode does not die with WinError 1314.
 - `plan-fillers`: filler-word detection from the transcript, written as
   disabled (`enabled: false`) proposals into `plan.json`.
 - `audit`: fail-closed edit-plan validation (source hash, no overlaps,
