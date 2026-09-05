@@ -383,7 +383,11 @@ def run_part(
 
 
 def _assemble_manifest_for(manifest: assemble_mod.EpisodeManifest, edited_parts: list[Path]) -> assemble_mod.EpisodeManifest:
-    return manifest.model_copy(update={"parts": [str(p) for p in edited_parts]})
+    # assemble resolves relative part paths against the manifest's directory
+    # (examples/ for the bundled manifest), but the edited parts live under
+    # --out-dir, which is relative to the *current* directory by default
+    # ("out"). Hand over absolute paths so both conventions cannot collide.
+    return manifest.model_copy(update={"parts": [str(Path(p).resolve()) for p in edited_parts]})
 
 
 def run_episode(

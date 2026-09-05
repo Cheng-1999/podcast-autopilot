@@ -292,3 +292,22 @@ def test_run_episode_plan_fillers_reruns_when_plan_pauses_was_invalidated(tmp_pa
         assert statuses["plan-pauses"] == "ran"
         assert statuses["plan-fillers"] == "ran"
         assert statuses["apply"] == "ran"
+
+
+def test_run_episode_relative_out_dir_with_manifest_in_subdirectory(tmp_path: Path, monkeypatch):
+    """The bundled layout: manifest in examples/, default --out-dir "out" relative
+    to the repo root. assemble resolves manifest-relative part paths, so the
+    edited parts handed to it must not be re-rooted under examples/."""
+    examples = tmp_path / "examples"
+    examples.mkdir()
+    episode_yaml = _make_episode(examples)
+    monkeypatch.chdir(tmp_path)
+
+    report = run_mod.run_episode(
+        Path("examples") / "episode.yaml", AppConfig(), profile_name="default", profile_config_path=None,
+        model_size="small", out_dir=Path("out"),
+    )
+    assert report.assemble_result is not None
+    assert Path(report.assemble_result["output"]).is_file()
+    assert (tmp_path / "out" / "episode" / "ep01" / "ep01.mp3").is_file()
+    assert not (examples / "out").exists()
