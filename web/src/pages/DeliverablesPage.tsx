@@ -5,10 +5,12 @@ import { fetchEpisode, fetchDeliverables, fetchReport, fetchJson } from "../api/
 import type { EpisodeDetail, DeliverablesResponse, ReceiptData, ChapterEntry } from "../api/types";
 import { RunReportView } from "../components/RunReportView";
 import { formatTimeTenths } from "../lib/format";
+import { useLocale } from "../i18n";
 
 export const DeliverablesPage: React.FC = () => {
   const { id = "" } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { t } = useLocale();
 
   const { data: episode } = useQuery<EpisodeDetail>({
     queryKey: ["episode", id],
@@ -57,15 +59,15 @@ export const DeliverablesPage: React.FC = () => {
         }}
       >
         <button type="button" className="dense-btn" onClick={() => navigate(`/episodes/${id}`)}>
-          ← 返回集數
+          {t("nav.back")}
         </button>
         <h1 style={{ fontSize: "15px", fontWeight: 600, color: "var(--text-primary)" }}>
-          成品檔案 — {episode?.title || id}
+          {t("deliverables.heading")} — {episode?.title || id}
         </h1>
       </div>
 
       {isLoading && (
-        <div style={{ padding: "24px", textAlign: "center", color: "var(--text-muted)" }}>載入成品資訊中...</div>
+        <div style={{ padding: "24px", textAlign: "center", color: "var(--text-muted)" }}>{t("deliverables.loading")}</div>
       )}
 
       {deliverables && !deliverables.final_mp3 && (
@@ -79,7 +81,7 @@ export const DeliverablesPage: React.FC = () => {
             textAlign: "center",
           }}
         >
-          尚未產出最終 MP3。請先執行完整處理流程。
+          {t("deliverables.none")}
         </div>
       )}
 
@@ -95,14 +97,14 @@ export const DeliverablesPage: React.FC = () => {
             gap: "10px",
           }}
         >
-          <span className="label-caps">最終成品 (FINAL MP3)</span>
+          <span className="label-caps">{t("deliverables.final")} (FINAL MP3)</span>
           <audio controls src={deliverables.final_mp3} style={{ width: "100%" }} />
           <div style={{ display: "flex", gap: "16px", fontSize: "var(--font-size-sm)", flexWrap: "wrap" }}>
             <span className="mono tabular-nums">時長: {duration !== null ? formatTimeTenths(duration) : "-"}</span>
             <span className="mono tabular-nums">LUFS: {lufs !== null ? lufs.toFixed(2) : "-"}</span>
             <span className="mono tabular-nums">True Peak: {truePeak !== null ? `${truePeak.toFixed(2)} dBTP` : "-"}</span>
             <a href={deliverables.final_mp3} download className="dense-btn">
-              下載 MP3
+              {t("deliverables.downloadMp3")}
             </a>
           </div>
         </div>
@@ -118,7 +120,7 @@ export const DeliverablesPage: React.FC = () => {
           }}
         >
           <div style={{ padding: "8px 12px", borderBottom: "var(--border-subtle)", backgroundColor: "var(--surface-elevated)" }}>
-            <span className="label-caps">章節 (CHAPTERS)</span>
+            <span className="label-caps">{t("deliverables.chapters")} (CHAPTERS)</span>
           </div>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "var(--font-size-sm)" }}>
             <thead>
@@ -155,7 +157,7 @@ export const DeliverablesPage: React.FC = () => {
           }}
         >
           <div className="label-caps" style={{ marginBottom: "8px" }}>
-            分段編輯後音檔 (EDITED PARTS)
+            {t("deliverables.editedParts")} (EDITED PARTS)
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
             {deliverables.parts.map((p) => (
@@ -168,7 +170,7 @@ export const DeliverablesPage: React.FC = () => {
                     下載 WAV
                   </a>
                 ) : (
-                  <span style={{ color: "var(--text-muted)" }}>尚未產出</span>
+                  <span style={{ color: "var(--text-muted)" }}>{t("deliverables.notProduced")}</span>
                 )}
               </div>
             ))}
@@ -178,7 +180,7 @@ export const DeliverablesPage: React.FC = () => {
 
       <div style={{ display: "flex", justifyContent: "flex-end" }}>
         <a href={`/api/episodes/${encodeURIComponent(id)}/report`} target="_blank" rel="noreferrer" className="dense-btn">
-          開啟 RUN_REPORT.md
+          {t("deliverables.openReport")}
         </a>
       </div>
 

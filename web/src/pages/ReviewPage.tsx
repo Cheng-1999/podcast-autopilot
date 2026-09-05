@@ -18,6 +18,7 @@ import { TranscriptPane } from "../components/TranscriptPane";
 import { computeSecondsRemoved, computeEnabledFillerCount, computeSnippetRange } from "../lib/planMath";
 import { formatTimeTenths } from "../lib/format";
 import { registerNavigationGuard, confirmNavigation } from "../lib/navigationGuard";
+import { useLocale } from "../i18n";
 
 function partStems(episode: EpisodeDetail | undefined): string[] {
   if (!episode) return [];
@@ -45,6 +46,7 @@ function extractErrorsByItemId(errors: string[], knownIds: Set<string>): Map<str
 }
 
 export const ReviewPage: React.FC = () => {
+  const { t } = useLocale();
   const { id = "" } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -202,10 +204,10 @@ export const ReviewPage: React.FC = () => {
 
   useEffect(() => {
     registerNavigationGuard(() =>
-      !dirty || window.confirm("有未儲存的變更，確定要離開嗎？")
+      !dirty || window.confirm(t("review.leaveConfirm"))
     );
     return () => registerNavigationGuard(null);
-  }, [dirty]);
+  }, [dirty, t]);
 
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
@@ -271,10 +273,10 @@ export const ReviewPage: React.FC = () => {
       >
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <button type="button" className="dense-btn" onClick={() => guardedNavigate(`/episodes/${id}`)}>
-            ← 返回集數
+            {t("nav.back")}
           </button>
-          <span style={{ color: "var(--text-primary)" }}>審查波形 — {episode?.title || id}</span>
-          {dirty && <span style={{ color: "var(--semantic-amber)", fontSize: "var(--font-size-xs)" }}>● 未儲存</span>}
+          <span style={{ color: "var(--text-primary)" }}>{t("detail.review")} — {episode?.title || id}</span>
+          {dirty && <span style={{ color: "var(--semantic-amber)", fontSize: "var(--font-size-xs)" }}>{t("review.unsaved")}</span>}
         </div>
         <div style={{ display: "flex", gap: "6px" }}>
           {stems.map((stem) => (
@@ -284,7 +286,7 @@ export const ReviewPage: React.FC = () => {
               className="dense-btn"
               onClick={() => {
                 if (stem === activePart) return;
-                if (dirty && !window.confirm("切換段落將捨棄未儲存的變更，確定嗎？")) return;
+                if (dirty && !window.confirm(t("review.switchConfirm"))) return;
                 setActivePart(stem);
               }}
               style={
@@ -310,7 +312,7 @@ export const ReviewPage: React.FC = () => {
             fontSize: "var(--font-size-sm)",
           }}
         >
-          <div style={{ fontWeight: 600, marginBottom: "4px" }}>審核失敗 (422)：</div>
+          <div style={{ fontWeight: 600, marginBottom: "4px" }}>{t("review.failed")}</div>
           <ul style={{ paddingLeft: "18px" }}>
             {errors.map((e, i) => (
               <li key={i}>{e}</li>
@@ -338,12 +340,12 @@ export const ReviewPage: React.FC = () => {
         </div>
         <div style={{ display: "flex", gap: "6px" }}>
           <button type="button" data-testid="save-plan-button" className="dense-btn" disabled={!dirty || saveState === "saving"} onClick={doSave}>
-            儲存 <span className="kbd-hint">s</span>
+            {t("common.save")} <span className="kbd-hint">s</span>
           </button>
           <button type="button" className="dense-btn primary" disabled={saveState === "saving"} onClick={doReapply}>
-            儲存並重新套用 <span className="kbd-hint">a</span>
+            {t("review.saveApply")} <span className="kbd-hint">a</span>
           </button>
-          {saveState === "saved" && <span style={{ color: "var(--semantic-green)", alignSelf: "center" }}>已儲存</span>}
+          {saveState === "saved" && <span style={{ color: "var(--semantic-green)", alignSelf: "center" }}>{t("common.saved")}</span>}
         </div>
       </div>
 
@@ -362,7 +364,7 @@ export const ReviewPage: React.FC = () => {
           <span><span style={{ color: "rgb(245,165,36)" }}>■</span> 贅字 (filler)</span>
           <span><span style={{ color: "rgb(76,141,255)" }}>▢</span> 片段候選 (clip)</span>
           <span>▢ 虛線 = 已停用</span>
-          <span style={{ marginLeft: "auto" }}>滾輪縮放 ‧ 拖曳定位</span>
+          <span style={{ marginLeft: "auto" }}>{t("review.zoom")}</span>
         </div>
         <Waveform
           peaks={peaksData?.peaks ?? []}

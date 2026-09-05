@@ -1,6 +1,7 @@
 import React, { useMemo, useRef, useState } from "react";
 import type { TranscriptSegment } from "../api/types";
 import { formatTimeShort } from "../lib/format";
+import { useLocale } from "../i18n";
 
 interface TranscriptPaneProps {
   segments: TranscriptSegment[];
@@ -9,6 +10,7 @@ interface TranscriptPaneProps {
 }
 
 export const TranscriptPane: React.FC<TranscriptPaneProps> = ({ segments, currentTime, onSeek }) => {
+  const { t } = useLocale();
   const [query, setQuery] = useState("");
   const activeRef = useRef<HTMLDivElement | null>(null);
 
@@ -46,11 +48,11 @@ export const TranscriptPane: React.FC<TranscriptPaneProps> = ({ segments, curren
           gap: "8px",
         }}
       >
-        <span className="label-caps">逐字稿 (TRANSCRIPT)</span>
+        <span className="label-caps">{t("transcript.heading")} (TRANSCRIPT)</span>
         <input
           type="text"
           className="dense-input"
-          placeholder="搜尋..."
+          placeholder={t("transcript.search")}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           style={{ width: "140px" }}
@@ -81,7 +83,7 @@ export const TranscriptPane: React.FC<TranscriptPaneProps> = ({ segments, curren
           );
         })}
         {filtered.length === 0 && (
-          <div style={{ padding: "16px", textAlign: "center", color: "var(--text-muted)" }}>無符合結果</div>
+          <div style={{ padding: "16px", textAlign: "center", color: "var(--text-muted)" }}>{t("transcript.noResults")}</div>
         )}
       </div>
     </div>

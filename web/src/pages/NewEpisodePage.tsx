@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { createEpisode, fetchEpisodes, registerLocalPath, runEpisode, uploadFile } from "../api/client";
 import { reorder, validateChapters } from "../api/validation";
 import type { EpisodeCreateBody, UploadResponse } from "../api/types";
+import { useLocale } from "../i18n";
 
 type Part = UploadResponse & { name: string; progress: number; path: string };
 type Chapter = { start: string; title: string };
@@ -19,6 +20,7 @@ function UploadDrop({ onFiles, label }: { onFiles: (files: File[]) => void; labe
 }
 
 export const NewEpisodePage: React.FC = () => {
+  const { t } = useLocale();
   const navigate = useNavigate();
   const { data: episodes } = useQuery({ queryKey: ["episodes"], queryFn: fetchEpisodes });
   const latest = useMemo(() => [...(episodes || [])].sort((a, b) => (b.last_run_time || 0) - (a.last_run_time || 0))[0], [episodes]);
@@ -40,13 +42,13 @@ export const NewEpisodePage: React.FC = () => {
   function movePart(index: number, direction: -1 | 1) { setParts((old) => reorder(old, index, direction)); }
   function updateChapter(index: number, key: keyof Chapter, value: string) { setChapters((old) => old.map((c, i) => i === index ? { ...c, [key]: value } : c)); }
   async function submit(runNow: boolean) {
-    setError(""); if (!title.trim() || !parts.length) { setError("請填寫標題並加入至少一個段落音檔"); return; }
+    setError(""); if (!title.trim() || !parts.length) { setError("Please enter a title and add at least one part audio file"); return; }
     const chapterError = validateChapters(chapters.filter((c) => c.title || c.start), totalDuration); if (chapterError) { setStep(3); setError(chapterError); return; }
     setSaving(true); try { const body: EpisodeCreateBody = { title: title.trim(), episode, parts: parts.map((p) => p.path), intro: intro?.path || null, outro: outro?.path || null, bgm: bgm ? { path: bgm.path, gain_db: Number(duck.gain_db), duck: Object.fromEntries(Object.entries(duck).filter(([key]) => key !== "gain_db").map(([k, v]) => [k, Number(v)])) } : null, chapters: chapters.filter((c) => c.title || c.start), tags: { ...tags, year: tags.year ? Number(tags.year) : null } }; const created = await createEpisode(body); if (runNow) await runEpisode(created.id, { profile: "default", model: "medium", force: false, skip: [] }); navigate(`/episodes/${created.id}`); } catch (e) { setError((e as Error).message); } finally { setSaving(false); }
   }
   const field = (label: string, value: string, set: (value: string) => void, type = "text") => <label className="wizard-field"><span>{label}</span><input className="dense-input" type={type} value={value} onChange={(e) => set(e.target.value)} /></label>;
   return <div className="wizard-page">
-    <header className="page-header"><div><button className="dense-btn" onClick={() => navigate("/episodes")}>← 返回列表</button><h1>新增集數 <span className="mono">/ NEW EPISODE</span></h1></div><span className="mono wizard-counter">STEP {step} / 3</span></header>
+    <header className="page-header"><div><button className="dense-btn" onClick={() => navigate("/episodes")}>{t("nav.list")}</button><h1>{t("new.heading")} <span className="mono">/ NEW EPISODE</span></h1></div><span className="mono wizard-counter">STEP {step} / 3</span></header>
     <nav className="wizard-steps">{["基本資料", "段落音檔", "配樂與章節"].map((name, i) => <button key={name} className={step === i + 1 ? "active" : step > i + 1 ? "complete" : ""} onClick={() => setStep(i + 1)}><b>{String(i + 1).padStart(2, "0")}</b>{name}</button>)}</nav>
     {error && <div className="inline-error">{error}</div>}
     {step === 1 && <section className="wizard-panel"><h2>基本資料 <small>沿用最近集數的標籤作為起點</small></h2><div className="form-grid">{field("標題 TITLE", title, setTitle)}{field("集數 EPISODE", String(episode), (v) => setEpisode(Number(v) || 0), "number")}{field("藝術家 ARTIST", tags.artist, (v) => setTags({ ...tags, artist: v }))}{field("專輯 ALBUM", tags.album, (v) => setTags({ ...tags, album: v }))}{field("年份 YEAR", tags.year, (v) => setTags({ ...tags, year: v }), "number")}<label className="wizard-field wide"><span>備註 COMMENT</span><input className="dense-input" value={tags.comment} onChange={(e) => setTags({ ...tags, comment: e.target.value })} /></label></div><div className="wizard-actions"><button className="dense-btn primary" onClick={() => setStep(2)}>下一步：加入段落 →</button></div></section>}

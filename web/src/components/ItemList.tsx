@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import type { PlanItem } from "../api/types";
 import { formatTimeTenths } from "../lib/format";
+import { useLocale } from "../i18n";
 
 interface ItemListProps {
   items: PlanItem[];
@@ -10,14 +11,6 @@ interface ItemListProps {
   errorsByItemId: Map<string, string[]>;
 }
 
-const KIND_LABEL: Record<string, string> = {
-  keep: "保留",
-  cut: "剪除",
-  fade: "淡出",
-  filler: "贅字",
-  clip: "片段",
-};
-
 export const ItemList: React.FC<ItemListProps> = ({
   items,
   selectedItemId,
@@ -25,6 +18,8 @@ export const ItemList: React.FC<ItemListProps> = ({
   onToggleEnabled,
   errorsByItemId,
 }) => {
+  const { t } = useLocale();
+  const kindLabel: Record<string, string> = { keep: t("items.keep", {}), cut: t("review.cut"), fade: t("items.fade", {}), filler: t("review.filler"), clip: t("review.clip") };
   const rowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
 
   useEffect(() => {
@@ -52,32 +47,32 @@ export const ItemList: React.FC<ItemListProps> = ({
           backgroundColor: "var(--surface-elevated)",
         }}
       >
-        <span className="label-caps">編輯項目 (ITEMS)</span>
-        <span className="kbd-hint">j/k 選取</span>
-        <span className="kbd-hint">space 試聽</span>
-        <span className="kbd-hint">e 切換</span>
+        <span className="label-caps">{t("items.heading")} (ITEMS)</span>
+        <span className="kbd-hint">{t("items.select")}</span>
+        <span className="kbd-hint">{t("items.listen")}</span>
+        <span className="kbd-hint">{t("items.toggle")}</span>
       </div>
       <div style={{ overflowY: "auto", flex: 1 }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "var(--font-size-sm)" }}>
           <thead>
             <tr style={{ backgroundColor: "var(--surface-elevated)", height: "26px" }}>
               <th className="label-caps" style={{ padding: "0 8px", textAlign: "left" }}>
-                啟用
+                {t("items.enabled")}
               </th>
               <th className="label-caps" style={{ padding: "0 8px", textAlign: "left" }}>
                 ID
               </th>
               <th className="label-caps" style={{ padding: "0 8px", textAlign: "left" }}>
-                種類
+                {t("items.kind")}
               </th>
               <th className="label-caps mono" style={{ padding: "0 8px", textAlign: "left" }}>
-                開始
+                {t("items.start")}
               </th>
               <th className="label-caps mono" style={{ padding: "0 8px", textAlign: "left" }}>
-                結束
+                {t("items.end")}
               </th>
               <th className="label-caps" style={{ padding: "0 8px", textAlign: "left" }}>
-                原因
+                {t("items.reason")}
               </th>
             </tr>
           </thead>
@@ -116,7 +111,7 @@ export const ItemList: React.FC<ItemListProps> = ({
                       {item.id}
                     </td>
                     <td style={{ padding: "0 8px", color: "var(--text-muted)" }}>
-                      {KIND_LABEL[item.kind] ?? item.kind}
+                      {kindLabel[item.kind] ?? item.kind}
                     </td>
                     <td className="mono tabular-nums" style={{ padding: "0 8px" }}>
                       {formatTimeTenths(item.start)}

@@ -1,11 +1,13 @@
 import React, { useMemo } from "react";
 import { marked } from "marked";
+import { useLocale } from "../i18n";
 
 interface RunReportViewProps {
   content: string | null | undefined;
 }
 
 export const RunReportView: React.FC<RunReportViewProps> = ({ content }) => {
+  const { t } = useLocale();
   const html = useMemo(() => {
     if (!content) return "";
     try {
@@ -28,7 +30,7 @@ export const RunReportView: React.FC<RunReportViewProps> = ({ content }) => {
           textAlign: "center",
         }}
       >
-        尚未生成 RUN_REPORT.md。請先執行處理流程。
+        {t("report.empty")}
       </div>
     );
   }
@@ -52,7 +54,7 @@ export const RunReportView: React.FC<RunReportViewProps> = ({ content }) => {
           gap: "8px",
         }}
       >
-        <span className="label-caps">執行報告 (RUN_REPORT.md)</span>
+        <span className="label-caps">{t("report.heading")} (RUN_REPORT.md)</span>
       </div>
 
       <div

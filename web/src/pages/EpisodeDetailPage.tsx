@@ -16,8 +16,10 @@ import { StageGrid } from "../components/StageGrid";
 import { LogPanel } from "../components/LogPanel";
 import { RunReportView } from "../components/RunReportView";
 import type { EpisodeDetail } from "../api/types";
+import { useLocale } from "../i18n";
 
 export const EpisodeDetailPage: React.FC = () => {
+  const { t } = useLocale();
   const { id = "" } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
@@ -212,7 +214,7 @@ export const EpisodeDetailPage: React.FC = () => {
             onClick={() => navigate("/episodes")}
             style={{ height: "24px" }}
           >
-            ← 返回列表
+            {t("nav.list")}
             <span className="kbd-hint">g e</span>
           </button>
 
@@ -264,13 +266,13 @@ export const EpisodeDetailPage: React.FC = () => {
             執行監控
           </span>
           <Link to={`/episodes/${id}/review`} className="dense-btn">
-            審查波形
+          {t("detail.review")}
           </Link>
           <Link to={`/episodes/${id}/deliverables`} className="dense-btn">
             成品檔案
           </Link>
           <Link to={`/episodes/${id}/clips`} className="dense-btn">
-            短片候選
+          {t("detail.clips")}
           </Link>
         </div>
       </div>
@@ -285,7 +287,7 @@ export const EpisodeDetailPage: React.FC = () => {
             fontSize: "var(--font-size-sm)",
           }}
         >
-          載入集數資訊中...
+          {t("common.loading")}
         </div>
       )}
 
@@ -300,7 +302,7 @@ export const EpisodeDetailPage: React.FC = () => {
             fontSize: "var(--font-size-sm)",
           }}
         >
-          無法載入集數資訊: {(epError as Error).message}
+          {t("episodes.loadError", { message: (epError as Error).message })}
         </div>
       )}
 

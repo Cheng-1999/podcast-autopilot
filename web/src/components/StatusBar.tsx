@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import type { HealthResponse } from "../api/types";
 import { LanguageSelector } from "./LanguageSelector";
+import { useLocale } from "../i18n";
 
 interface StatusBarProps {
   health?: HealthResponse | null;
@@ -14,6 +15,7 @@ interface StatusBarProps {
 }
 
 export const StatusBar: React.FC<StatusBarProps> = ({ health, activeJob }) => {
+  const { t } = useLocale();
   const [elapsed, setElapsed] = useState<number>(0);
 
   useEffect(() => {
@@ -83,7 +85,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({ health, activeJob }) => {
               alignItems: "center",
             }}
           >
-            集數
+            {t("nav.episodes")}
             <span className="kbd-hint hide-on-mobile">g e</span>
           </Link>
         </nav>
@@ -105,7 +107,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({ health, activeJob }) => {
           >
             <span className="status-dot blue" />
             <span className="label-caps hide-on-mobile" style={{ color: "var(--semantic-blue)" }}>
-              JOB:
+              {t("status.job")}:
             </span>
             <span className="mono" style={{ color: "var(--text-primary)" }}>
               {activeJob.episodeId}
@@ -118,7 +120,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({ health, activeJob }) => {
           <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
             <span className="status-dot muted" />
             <span className="mono" style={{ color: "var(--text-muted)", fontSize: "var(--font-size-xs)" }}>
-              IDLE
+              {t("status.idle")}
             </span>
           </div>
         )}
@@ -137,13 +139,13 @@ export const StatusBar: React.FC<StatusBarProps> = ({ health, activeJob }) => {
         {/* FFmpeg status */}
         <div style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
           <span className={`status-dot ${ffmpegOk ? "green" : "red"}`} />
-          <span className="mono">ffmpeg {ffmpegOk ? "ok" : "err"}</span>
+          <span className="mono">{t("status.ffmpeg", { state: ffmpegOk ? t("status.ok") : t("status.err") })}</span>
         </div>
 
         {/* Whisper models cached */}
         <div style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
           <span className={`status-dot ${cachedCount > 0 ? "green" : "amber"}`} />
-          <span className="mono">models {cachedCount}/2</span>
+          <span className="mono">{t("status.models", { count: cachedCount })}</span>
         </div>
 
         {/* Free disk */}

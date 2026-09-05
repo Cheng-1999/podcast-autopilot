@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchEpisodes } from "../api/client";
 import { getStatusDisplay } from "../api/status";
 import type { EpisodeSummary } from "../api/types";
+import { useLocale } from "../i18n";
 
 function formatDuration(seconds: number | null | undefined): string {
   if (seconds === null || seconds === undefined || isNaN(seconds)) return "-";
@@ -17,16 +18,14 @@ function formatLufs(lufs: number | null | undefined): string {
   return `${lufs.toFixed(1)} LUFS`;
 }
 
-function formatTimestamp(ts: number | null | undefined): string {
+function formatTimestamp(ts: number | null | undefined, locale: string): string {
   if (!ts) return "-";
   const date = new Date(ts * 1000);
-  const pad = (n: number) => n.toString().padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(
-    date.getHours()
-  )}:${pad(date.getMinutes())}`;
+  return new Intl.DateTimeFormat(locale, { dateStyle: "short", timeStyle: "short" }).format(date);
 }
 
 export const EpisodesPage: React.FC = () => {
+  const { t, locale } = useLocale();
   const navigate = useNavigate();
   const { data: episodes, isLoading, error } = useQuery<EpisodeSummary[]>({
     queryKey: ["episodes"],
@@ -50,16 +49,16 @@ export const EpisodesPage: React.FC = () => {
       >
         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
           <h1 style={{ fontSize: "16px", fontWeight: 600, color: "var(--text-primary)" }}>
-            集數清單 (EPISODES)
+            {t("episodes.heading")} (EPISODES)
           </h1>
           <span className="mono" style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
-            共 {episodes?.length ?? 0} 集
+            {t("episodes.count", { count: episodes?.length ?? 0 })}
           </span>
         </div>
 
         <div>
           <Link to="/episodes/new" className="dense-btn">
-            <span>+ 新增集數</span>
+            <span>{t("episodes.new")}</span>
           </Link>
         </div>
       </div>
@@ -75,7 +74,7 @@ export const EpisodesPage: React.FC = () => {
             fontSize: "var(--font-size-sm)",
           }}
         >
-          載入中...
+          {t("common.loading")}
         </div>
       )}
 
@@ -90,7 +89,7 @@ export const EpisodesPage: React.FC = () => {
             fontSize: "var(--font-size-sm)",
           }}
         >
-          無法載入集數清單: {(error as Error).message}
+          {t("episodes.loadError", { message: (error as Error).message })}
         </div>
       )}
 
@@ -107,10 +106,10 @@ export const EpisodesPage: React.FC = () => {
           }}
         >
           <div style={{ marginBottom: "12px", fontSize: "var(--font-size-base)" }}>
-            尚無任何集數檔案
+            {t("episodes.empty")}
           </div>
           <Link to="/episodes/new" className="dense-btn primary">
-            前往新增集數向導精靈
+            {t("episodes.emptyAction")}
           </Link>
         </div>
       )}
@@ -143,28 +142,28 @@ export const EpisodesPage: React.FC = () => {
                 }}
               >
                 <th className="label-caps" style={{ padding: "0 12px", width: "70px", whiteSpace: "nowrap" }}>
-                  集數
+                  {t("episodes.columns.number")}
                 </th>
                 <th className="label-caps" style={{ padding: "0 12px", whiteSpace: "nowrap" }}>
-                  標題 (TITLE)
+                  {t("episodes.columns.title")} (TITLE)
                 </th>
                 <th className="label-caps" style={{ padding: "0 12px", width: "80px", whiteSpace: "nowrap" }}>
-                  段落數
+                  {t("episodes.columns.parts")}
                 </th>
                 <th className="label-caps" style={{ padding: "0 12px", width: "110px", whiteSpace: "nowrap" }}>
-                  狀態 (STATUS)
+                  {t("episodes.columns.status")} (STATUS)
                 </th>
                 <th className="label-caps" style={{ padding: "0 12px", width: "150px", whiteSpace: "nowrap" }}>
-                  上次執行
+                  {t("episodes.columns.lastRun")}
                 </th>
                 <th className="label-caps" style={{ padding: "0 12px", width: "90px", whiteSpace: "nowrap" }}>
-                  時長
+                  {t("episodes.columns.duration")}
                 </th>
                 <th className="label-caps" style={{ padding: "0 12px", width: "100px", whiteSpace: "nowrap" }}>
                   LUFS
                 </th>
                 <th className="label-caps" style={{ padding: "0 12px", width: "80px", whiteSpace: "nowrap" }}>
-                  操作
+                  {t("episodes.columns.actions")}
                 </th>
               </tr>
             </thead>
@@ -230,7 +229,7 @@ export const EpisodesPage: React.FC = () => {
                               color: "var(--text-muted)",
                             }}
                           >
-                            EXAMPLE
+                            {t("episode.example")}
                           </span>
                         )}
                       </div>
@@ -282,7 +281,7 @@ export const EpisodesPage: React.FC = () => {
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {formatTimestamp(ep.last_run_time)}
+                      {formatTimestamp(ep.last_run_time, locale)}
                     </td>
 
                     {/* Duration */}
@@ -319,7 +318,7 @@ export const EpisodesPage: React.FC = () => {
                           navigate(`/episodes/${ep.id}`);
                         }}
                       >
-                        開啟
+                        {t("common.open")}
                       </button>
                     </td>
                   </tr>

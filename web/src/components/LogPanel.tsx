@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { useLocale } from "../i18n";
 
 interface LogPanelProps {
   logs: string[];
@@ -13,6 +14,7 @@ export const LogPanel: React.FC<LogPanelProps> = ({
   onToggle,
   onClose,
 }) => {
+  const { t } = useLocale();
   const containerRef = useRef<HTMLDivElement>(null);
   const [isHovered, setIsHovered] = useState<boolean>(false);
 
@@ -59,9 +61,9 @@ export const LogPanel: React.FC<LogPanelProps> = ({
         onClick={onToggle}
       >
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <span className="label-caps">即時日誌輸出 (LOG TAIL)</span>
+          <span className="label-caps">{t("log.heading")} (LOG TAIL)</span>
           <span className="mono" style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
-            ({logs.length}/200 行)
+            {t("log.lines", { count: logs.length })}
           </span>
           {isHovered && isOpen && (
             <span
@@ -75,14 +77,14 @@ export const LogPanel: React.FC<LogPanelProps> = ({
                 fontWeight: 600,
               }}
             >
-              PAUSED ON HOVER
+              {t("log.pause")}
             </span>
           )}
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <span className="mono" style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
-            {isOpen ? "收合" : "展開"}
+            {isOpen ? t("log.collapse") : t("log.expand")}
           </span>
           <span className="kbd-hint">Esc</span>
         </div>
@@ -108,7 +110,7 @@ export const LogPanel: React.FC<LogPanelProps> = ({
           }}
         >
           {logs.length === 0 ? (
-            <div style={{ color: "var(--text-muted)" }}>尚無日誌記錄...</div>
+            <div style={{ color: "var(--text-muted)" }}>{t("log.empty")}</div>
           ) : (
             logs.map((line, idx) => (
               <div

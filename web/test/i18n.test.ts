@@ -81,6 +81,13 @@ describe("getMessage", () => {
   it("interpolation-ready keys still contain their placeholder", () => {
     expect(getMessage("en", "greeting.welcome")).toContain("{{name}}");
   });
+
+  it("resolves representative dashboard copy in every locale", () => {
+    const keys = ["episodes.heading", "new.heading", "detail.review", "clips.heading", "deliverables.heading", "controls.run", "transcript.search"] as const;
+    for (const locale of SUPPORTED_LOCALES) {
+      for (const key of keys) expect(getMessage(locale, key)).not.toBe(key);
+    }
+  });
 });
 
 describe("locale persistence", () => {

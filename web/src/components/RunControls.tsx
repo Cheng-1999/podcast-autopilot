@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { ALL_PIPELINE_STAGES } from "../api/sse";
+import { useLocale } from "../i18n";
 
 interface RunControlsProps {
   profiles: string[];
@@ -14,6 +15,7 @@ export const RunControls: React.FC<RunControlsProps> = ({
   onRun,
   onCancel,
 }) => {
+  const { t } = useLocale();
   const [profile, setProfile] = useState<string>("default");
   const [model, setModel] = useState<string>("medium");
   const [force, setForce] = useState<boolean>(false);
@@ -50,7 +52,7 @@ export const RunControls: React.FC<RunControlsProps> = ({
         {/* Profile */}
         <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
           <label className="label-caps" htmlFor="profile-select">
-            配置檔 (PROFILE):
+            {t("controls.profile")} (PROFILE):
           </label>
           <select
             id="profile-select"
@@ -70,7 +72,7 @@ export const RunControls: React.FC<RunControlsProps> = ({
         {/* Model */}
         <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
           <label className="label-caps" htmlFor="model-select">
-            模型 (MODEL):
+            {t("controls.model")} (MODEL):
           </label>
           <select
             id="model-select"
@@ -79,8 +81,8 @@ export const RunControls: React.FC<RunControlsProps> = ({
             onChange={(e) => setModel(e.target.value)}
             disabled={isRunning}
           >
-            <option value="small">small (快速)</option>
-            <option value="medium">medium (高精度)</option>
+            <option value="small">small ({t("controls.fast")})</option>
+            <option value="medium">medium ({t("controls.accurate")})</option>
           </select>
         </div>
 
@@ -106,7 +108,7 @@ export const RunControls: React.FC<RunControlsProps> = ({
               cursor: isRunning ? "not-allowed" : "pointer",
             }}
           >
-            強制重新執行 (force)
+            {t("controls.force")} (force)
           </label>
         </div>
 
@@ -118,9 +120,9 @@ export const RunControls: React.FC<RunControlsProps> = ({
             onClick={() => setShowSkipDropdown(!showSkipDropdown)}
             disabled={isRunning}
           >
-            <span className="label-caps">略過階段 (SKIP):</span>
+            <span className="label-caps">{t("controls.skip")} (SKIP):</span>
             <span className="mono" style={{ color: "var(--semantic-blue)" }}>
-              {skipStages.length > 0 ? `${skipStages.length} 個階段` : "無"}
+              {skipStages.length > 0 ? t("controls.skipped", { count: skipStages.length }) : t("common.none")}
             </span>
           </button>
 
@@ -183,7 +185,7 @@ export const RunControls: React.FC<RunControlsProps> = ({
           onClick={handleRun}
           disabled={isRunning}
         >
-          <span>開始執行</span>
+          <span>{t("controls.run")}</span>
           <span className="kbd-hint" style={{ color: "#0F1216", backgroundColor: "rgba(0,0,0,0.15)" }}>
             r
           </span>
@@ -195,7 +197,7 @@ export const RunControls: React.FC<RunControlsProps> = ({
           onClick={onCancel}
           disabled={!isRunning}
         >
-          <span>取消執行</span>
+          <span>{t("controls.cancel")}</span>
         </button>
       </div>
     </div>

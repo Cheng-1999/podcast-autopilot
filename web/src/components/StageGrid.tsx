@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { ALL_PART_STAGES, type PartStagesMap, type StageInfo } from "../api/sse";
 import { getStageDisplay } from "../api/status";
+import { useLocale } from "../i18n";
 
 interface StageGridProps {
   parts: Array<{ stem: string }>;
@@ -8,6 +9,7 @@ interface StageGridProps {
 }
 
 export const StageGrid: React.FC<StageGridProps> = ({ parts, stagesState }) => {
+  const { t } = useLocale();
   const prevStagesRef = useRef<Record<string, string>>({});
   const [flashingKeys, setFlashingKeys] = useState<Record<string, boolean>>({});
 
@@ -113,7 +115,7 @@ export const StageGrid: React.FC<StageGridProps> = ({ parts, stagesState }) => {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <span className="label-caps">執行進度網格 (STAGE GRID)</span>
+          <span className="label-caps">{t("stage.heading")} (STAGE GRID)</span>
           <span className="mono" style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
             LIVE SSE
           </span>
@@ -144,7 +146,7 @@ export const StageGrid: React.FC<StageGridProps> = ({ parts, stagesState }) => {
                 width: "140px",
               }}
             >
-              段落 (PART)
+              {t("stage.part")} (PART)
             </th>
             {ALL_PART_STAGES.map((stage) => (
               <th
@@ -226,7 +228,7 @@ export const StageGrid: React.FC<StageGridProps> = ({ parts, stagesState }) => {
                 color: "var(--text-primary)",
               }}
             >
-              [全集組裝]
+              {t("stage.assembly")}
             </td>
             {ALL_PART_STAGES.map((stage) => (
               <td
