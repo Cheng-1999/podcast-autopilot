@@ -125,3 +125,64 @@ every stage re-ran from scratch.
 20 s placeholder parts, runs the pipeline): `RUN OK`, 229 s wall including
 the pip install and the first whisper model download, MP3 of 40.5 s at
 -16.4 LUFS / -3.9 dBTP, `RUN_REPORT.md` written.
+
+## Fresh-clone dashboard smoke run (2026-09-06, T-0009-P6-F1)
+
+`git clone` the `feat/dashboard` branch into a fresh temp directory, then
+`.\dashboard.ps1 -Port 18766 -NoBrowser` (a non-default port: this machine's
+8765 is already bound by the agentboard supervisor's own dashboard, see the
+board ledger) with no pre-existing `.venv`, `web/dist`, or `out/` in the
+clone:
+
+- `.venv` created and dependencies installed: clone+venv-create at
+  06:33:12->06:33:53, then `pip install -r requirements.txt` + `pip install
+  -e .` finished by the time `web/`'s `npm ci && npm run build` completed at
+  06:38:10 (~4m17s for pip+npm together) - `✓ built in 4.45s` for the Vite
+  build itself.
+- `make-example` generated the two placeholder parts, uvicorn came up on
+  `http://0.0.0.0:18766` immediately after - about 5 minutes wall from clone
+  to a serving dashboard.
+- `GET /api/health` returned `ffmpeg_ok: true` and the resolved ffmpeg/
+  ffprobe paths; `GET /api/episodes` listed the bundled `episode.example`
+  manifest.
+- Ran the bundled example the same way the UI would (`POST
+  /api/episodes/episode.example/run` with `model: small`), headless since
+  this check has no browser: no stage cache existed yet in the fresh clone's
+  `out/`, so `small` was downloaded from the HF Hub on first use (unauthenticated,
+  rate-limit warning only, no failure) and `transcribe` actually ran instead
+  of hitting cache (47.95 s on `example-part-1`, its only non-trivial stage;
+  every other stage on both parts finished in low single-digit seconds).
+  Status reached `"done"`, `assembly.status: "ran (4.53s)"`.
+- Deliverable: `ep03.mp3`, confirmed by decoding with `ffprobe` (this check
+  ran headless): 40.5 s, 96 kbps, matches the API's reported -16.4 LUFS /
+  -3.6 dBTP. `GET /api/episodes/episode.example/deliverables` listed it plus
+  both parts' edited wavs.
+- Temp clone and its venv/`out/`/`web/dist` were deleted after the check;
+  nothing from it is committed.
+
+## Design gate (2026-09-06, T-0009-P6-F1)
+
+Ran against the dashboard's own dev server (`npm run dev`, proxying `/api`
+to a local backend instance) rather than the built SPA, so `impeccable
+detect`'s Puppeteer pass sees fully client-rendered routes:
+
+- `npx impeccable detect http://localhost:5173` (desktop, default
+  1280x800 viewport): `[]`, 0 findings.
+- `npx impeccable detect --viewport 375x844 http://localhost:5173`
+  (mobile width): `[]`, 0 findings.
+- `npx impeccable detect src/` (static regex pass over the TSX/CSS source):
+  `[]`, 0 findings.
+- Taste-library self-check (`00-GUARDRAILS.md`), the three desk-dense
+  decisions this build is built on (see `TASTE-LIBRARY.md` and
+  `library/desk-dense/entry.md`):
+  1. Panel grid with tables as the primary element and sticky headers, no
+     hero/cards/illustrations - episodes list, review screen and clips
+     table are all dense tables, not card grids.
+  2. Tabular monospace numerals for every number that changes (loudness,
+     durations, stage timings) via IBM Plex Mono, aligned on the decimal.
+  3. Color used only for meaning - the semantic status dots/borders (queued/
+     running/done/failed) are the only saturated color in the UI; everything
+     else is charcoal/white/muted-label per the family's palette.
+  Hero screenshot already on file at
+  `C:\Users\a8878\OneDrive\桌面\Style\library\desk-dense\podcast-autopilot-dashboard.png`
+  with its note in that folder's `entry.md`.

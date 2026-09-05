@@ -211,4 +211,3 @@ def test_spa_fallback_serves_index_and_assets(tmp_path, monkeypatch):
         api_missing = c.get("/api/nonexistent")
         assert api_missing.status_code == 404
         assert api_missing.json() == {"detail": "not found"}
-
