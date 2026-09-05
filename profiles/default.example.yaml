@@ -11,6 +11,36 @@ ffmpeg_path: null
 loudness_target_i: -16.0
 loudness_target_tp: -1.5
 
+denoise:
+  engine: auto # auto|noisereduce|afftdn|off
+
+voice_chain:
+  highpass_hz: 80
+  deesser_enabled: true
+  deesser_frequency: 0.5
+  deesser_intensity: 0.3
+  deesser_max: 0.5
+  compressor_threshold_db: -18
+  compressor_ratio: 3
+  compressor_attack_ms: 15
+  compressor_release_ms: 250
+  loudness_target_i: -16
+  loudness_target_tp: -1.5
+  loudness_target_lra: 11
+  adeclick: false
+  adeclip: false
+
+# faster-whisper model size: "small" (default) or "medium". Cached under
+# tools/models/ (gitignored), downloaded from Hugging Face on first use.
+whisper_model_size: small
+
+# Filler-word proposal detection (see `plan-fillers`); a word only counts
+# when isolated by a pause > filler_pause_threshold_s on both sides and its
+# recognition probability is above filler_min_probability.
+filler_words: [嗯, 呃, 啊, 那個, 就是說, 然後]
+filler_pause_threshold_s: 0.2
+filler_min_probability: 0.5
+
 # Silence tightening (used by `plan-pauses`).
 pauses:
   noise: "-35dB"
