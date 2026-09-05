@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import type { HealthResponse } from "../api/types";
+import { LanguageSelector } from "./LanguageSelector";
 
 interface StatusBarProps {
   health?: HealthResponse | null;
@@ -158,6 +159,8 @@ export const StatusBar: React.FC<StatusBarProps> = ({ health, activeJob }) => {
             LAN:{host}
           </span>
         </div>
+
+        <LanguageSelector />
       </div>
     </header>
   );
