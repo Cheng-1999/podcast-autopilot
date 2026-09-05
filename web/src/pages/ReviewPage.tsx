@@ -336,7 +336,7 @@ export const ReviewPage: React.FC = () => {
         }}
       >
         <div className="mono tabular-nums" style={{ color: "var(--text-primary)" }}>
-          啟用贅字: {fillerCount} ‧ 預計移除: {secondsRemoved.toFixed(1)}s / {formatTimeTenths(duration)}
+          {t("review.fillerSummary", { count: fillerCount, seconds: secondsRemoved.toFixed(1), duration: formatTimeTenths(duration) })}
         </div>
         <div style={{ display: "flex", gap: "6px" }}>
           <button type="button" data-testid="save-plan-button" className="dense-btn" disabled={!dirty || saveState === "saving"} onClick={doSave}>
@@ -360,10 +360,10 @@ export const ReviewPage: React.FC = () => {
         }}
       >
         <div style={{ display: "flex", gap: "12px", padding: "0 4px 8px", fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
-          <span><span style={{ color: "rgb(229,72,77)" }}>■</span> 剪除 (cut)</span>
-          <span><span style={{ color: "rgb(245,165,36)" }}>■</span> 贅字 (filler)</span>
-          <span><span style={{ color: "rgb(76,141,255)" }}>▢</span> 片段候選 (clip)</span>
-          <span>▢ 虛線 = 已停用</span>
+          <span><span style={{ color: "rgb(229,72,77)" }}>■</span> {t("review.legendCut")}</span>
+          <span><span style={{ color: "rgb(245,165,36)" }}>■</span> {t("review.legendFiller")}</span>
+          <span><span style={{ color: "rgb(76,141,255)" }}>▢</span> {t("review.legendClip")}</span>
+          <span>▢ {t("review.legendDisabled")}</span>
           <span style={{ marginLeft: "auto" }}>{t("review.zoom")}</span>
         </div>
         <Waveform

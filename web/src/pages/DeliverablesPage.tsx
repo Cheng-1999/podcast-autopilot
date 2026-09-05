@@ -100,7 +100,7 @@ export const DeliverablesPage: React.FC = () => {
           <span className="label-caps">{t("deliverables.final")} (FINAL MP3)</span>
           <audio controls src={deliverables.final_mp3} style={{ width: "100%" }} />
           <div style={{ display: "flex", gap: "16px", fontSize: "var(--font-size-sm)", flexWrap: "wrap" }}>
-            <span className="mono tabular-nums">時長: {duration !== null ? formatTimeTenths(duration) : "-"}</span>
+            <span className="mono tabular-nums">{t("deliverables.duration", { duration: duration !== null ? formatTimeTenths(duration) : "-" })}</span>
             <span className="mono tabular-nums">LUFS: {lufs !== null ? lufs.toFixed(2) : "-"}</span>
             <span className="mono tabular-nums">True Peak: {truePeak !== null ? `${truePeak.toFixed(2)} dBTP` : "-"}</span>
             <a href={deliverables.final_mp3} download className="dense-btn">
@@ -126,10 +126,10 @@ export const DeliverablesPage: React.FC = () => {
             <thead>
               <tr style={{ height: "26px" }}>
                 <th className="label-caps mono" style={{ padding: "0 12px", textAlign: "left" }}>
-                  開始
+                  {t("deliverables.start")}
                 </th>
                 <th className="label-caps" style={{ padding: "0 12px", textAlign: "left" }}>
-                  標題
+                  {t("deliverables.title")}
                 </th>
               </tr>
             </thead>
@@ -167,7 +167,7 @@ export const DeliverablesPage: React.FC = () => {
                 </span>
                 {p.edited_wav ? (
                   <a href={p.edited_wav} download className="dense-btn">
-                    下載 WAV
+                    {t("deliverables.downloadWav")}
                   </a>
                 ) : (
                   <span style={{ color: "var(--text-muted)" }}>{t("deliverables.notProduced")}</span>

@@ -128,6 +128,17 @@ const en = {
   "deliverables.editedParts": "Edited parts",
   "deliverables.notProduced": "Not produced yet",
   "deliverables.openReport": "Open RUN_REPORT.md",
+  "review.fillerSummary": "Enabled filler: {{count}} · Estimated removal: {{seconds}}s / {{duration}}",
+  "review.legendCut": "Cut (cut)",
+  "review.legendFiller": "Filler (filler)",
+  "review.legendClip": "Clip candidate (clip)",
+  "review.legendDisabled": "Dashed = disabled",
+  "detail.monitor": "Run monitor",
+  "detail.runFailed": "Failed to start run: {{message}}",
+  "deliverables.duration": "Duration: {{duration}}",
+  "deliverables.start": "Start",
+  "deliverables.title": "Title",
+  "deliverables.downloadWav": "Download WAV",
 } as const;
 
 export default en;

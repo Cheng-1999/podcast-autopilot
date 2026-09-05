@@ -7,10 +7,9 @@ import ko from "./ko";
 
 export type { MessageKey };
 
-// Every catalog other than the canonical `en` one is a Partial<MessageKey>:
-// a key present in `en` but absent from a locale's catalog resolves to the
-// English string via getMessage's fallback below.
-const catalogs: Record<Locale, Partial<Record<MessageKey, string>>> = {
+// Catalogs are complete; the resolver retains an English fallback for
+// forward compatibility when a new key is introduced.
+export const catalogs: Record<Locale, Record<MessageKey, string>> = {
   en,
   "zh-TW": zhTW,
   "zh-CN": zhCN,

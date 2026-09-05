@@ -151,10 +151,10 @@ export const EpisodeDetailPage: React.FC = () => {
         connectSSE(job.id);
         setIsLogOpen(true);
       } catch (err) {
-        alert(`啟動執行失敗: ${(err as Error).message}`);
+        alert(t("detail.runFailed", { message: (err as Error).message }));
       }
     },
-    [id, episode, connectSSE]
+    [id, episode, connectSSE, t]
   );
 
   // Cancel handler
@@ -263,13 +263,13 @@ export const EpisodeDetailPage: React.FC = () => {
               cursor: "default",
             }}
           >
-            執行監控
+            {t("detail.monitor")}
           </span>
           <Link to={`/episodes/${id}/review`} className="dense-btn">
           {t("detail.review")}
           </Link>
           <Link to={`/episodes/${id}/deliverables`} className="dense-btn">
-            成品檔案
+            {t("detail.deliverables")}
           </Link>
           <Link to={`/episodes/${id}/clips`} className="dense-btn">
           {t("detail.clips")}

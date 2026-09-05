@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { interpolate } from "../src/i18n/format";
 import { applyDocumentLang } from "../src/i18n/dom";
-import { getMessage, resolveMessage } from "../src/i18n/messages";
+import { catalogs, getMessage, resolveMessage } from "../src/i18n/messages";
 import { isLocale, SUPPORTED_LOCALES } from "../src/i18n/types";
 import {
   LOCALE_STORAGE_KEY,
@@ -86,6 +86,14 @@ describe("getMessage", () => {
     const keys = ["episodes.heading", "new.heading", "detail.review", "clips.heading", "deliverables.heading", "controls.run", "transcript.search"] as const;
     for (const locale of SUPPORTED_LOCALES) {
       for (const key of keys) expect(getMessage(locale, key)).not.toBe(key);
+    }
+  });
+
+  it("has a concrete catalog entry for every canonical key in every locale", () => {
+    const keys = Object.keys(catalogs.en).sort();
+    for (const locale of SUPPORTED_LOCALES) {
+      expect(Object.keys(catalogs[locale]).sort()).toEqual(keys);
+      for (const key of keys) expect(catalogs[locale][key as keyof typeof catalogs.en]).not.toBe("");
     }
   });
 });
