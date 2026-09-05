@@ -11,6 +11,7 @@ import typer
 from . import apply as apply_mod
 from . import assemble as assemble_mod
 from . import audit as audit_mod
+from . import clips as clips_mod
 from . import plan as plan_mod
 from . import probe as probe_mod
 from . import receipts as receipts_mod
@@ -205,6 +206,86 @@ def plan_fillers(
 
     plan_mod.save_plan(edit_plan, plan_path)
     typer.echo(f"PLAN-FILLERS OK: {len(candidates)} filler proposals (disabled) written to {plan_path}")
+
+
+@app.command()
+def clips(
+    audio_path: Path = typer.Argument(..., exists=True, readable=True),
+    model: Optional[str] = typer.Option(None, "--model", help="small|medium (default: config.whisper_model_size, else small)"),
+    render: bool = typer.Option(False, "--render", help="Also cut each candidate to out/<stem>/clips/<n>.mp3 + .srt"),
+    out_dir: Path = typer.Option(Path("out"), "--out-dir"),
+    config_path: Optional[Path] = typer.Option(None, "--config", help="Path to a config YAML file"),
+) -> None:
+    """Score transcript-driven clip candidates for social cuts; --render cuts each one to MP3+SRT.
+
+    Reuses out/<stem>/transcript.json if present instead of re-transcribing. An
+    optional LLM re-rank runs when ANTHROPIC_API_KEY is set; otherwise the local
+    scorer's order is the result.
+    """
+    _validate_model_size(model)
+    config = _load_app_config(config_path)
+    model_size = model or config.whisper_model_size
+
+    target_dir = Path(out_dir) / audio_path.stem
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    transcript_path = target_dir / "transcript.json"
+    if transcript_path.is_file():
+        data = transcribe_mod.load_transcript(transcript_path)
+    else:
+        data = transcribe_mod.transcribe_audio(audio_path, model_size=model_size, config=config)
+        transcribe_mod.save_transcript(data, transcript_path)
+        transcribe_mod.write_srt(data["segments"], target_dir / "transcript.srt")
+        transcribe_mod.write_markdown(data["segments"], target_dir / "transcript.md")
+
+    candidates = clips_mod.build_candidates(data, config)
+    candidates = clips_mod.rerank_with_llm(candidates, config)
+
+    source_info = probe_mod.probe_audio(audio_path, config)
+    source = plan_mod.SourceInfo(
+        path=str(audio_path),
+        sha256=audit_mod.sha256_of_file(audio_path),
+        duration=source_info["duration"],
+        sr=source_info["sr"],
+        channels=source_info["channels"],
+    )
+
+    clips_path = target_dir / "clips.json"
+    clips_mod.write_clips_json(
+        candidates,
+        source={"path": str(audio_path), "sha256": source.sha256, "duration": source.duration},
+        transcript_record={"path": str(transcript_path), "sha256": audit_mod.sha256_of_file(transcript_path)},
+        keywords=config.clips.keywords if config.clips else [],
+        out_path=clips_path,
+    )
+
+    plan_path = target_dir / "plan.json"
+    if plan_path.is_file():
+        edit_plan = plan_mod.load_plan(plan_path)
+    else:
+        created = datetime.now(timezone.utc).isoformat()
+        profile = plan_mod.ProfileInfo(name=config.profile_name, sha256=None)
+        edit_plan = plan_mod.make_identity_keep_plan(source, profile, created)
+
+    edit_plan.items = clips_mod.merge_clip_items(edit_plan.items, candidates)
+
+    result = audit_mod.audit_plan(edit_plan, audio_path)
+    if not result.ok:
+        typer.echo("AUDIT FAILED:\n" + "\n".join(result.errors), err=True)
+        raise typer.Exit(code=1)
+    plan_mod.save_plan(edit_plan, plan_path)
+
+    typer.echo(f"CLIPS OK: {len(candidates)} candidate(s) written to {clips_path}")
+    for c in candidates:
+        typer.echo(f"  {c['id']}: [{c['start']:.1f}s-{c['end']:.1f}s] score={c['score']:.2f}")
+
+    if render:
+        clips_dir = target_dir / "clips"
+        clips_dir.mkdir(parents=True, exist_ok=True)
+        for idx, c in enumerate(candidates, start=1):
+            clips_mod.render_clip(audio_path, c["start"], c["end"], clips_dir / f"{idx}.mp3", config)
+            clips_mod.write_clip_srt(data["segments"], c["start"], c["end"], clips_dir / f"{idx}.srt")
+        typer.echo(f"RENDER OK: {len(candidates)} clip(s) in {clips_dir}")
 
 
 @app.command()

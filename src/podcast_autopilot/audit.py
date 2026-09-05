@@ -7,12 +7,15 @@ from pathlib import Path
 
 from .plan import EditPlan
 
-ALLOWED_KINDS = {"keep", "cut", "fade", "filler"}
+ALLOWED_KINDS = {"keep", "cut", "fade", "filler", "clip"}
 
 # "filler" items are proposal annotations nested inside a "keep" span (a human
 # flips enabled=true to turn one into an actual cut at apply time); they are
 # exempt from the partition-style ordering/overlap check below, which only
-# makes sense for kinds that tile the timeline.
+# makes sense for kinds that tile the timeline. "clip" items are read-only
+# social-cut candidates from clips.py (always enabled=false): they never
+# affect the render, so they are exempt from the same ordering/overlap check
+# and never count toward the keep/cut totals below.
 PARTITION_KINDS = {"keep", "cut", "fade"}
 
 

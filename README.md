@@ -74,6 +74,9 @@ python -m venv .venv
   crossfade、sidechain-ducked 的背景音樂、章節標記，輸出打好 ID3 tag 的
   `out/<episode>/ep<NN>/ep<NN>.mp3` 與 receipt。manifest 結構見
   `examples/episode.example.yaml`。
+- `python -m podcast_autopilot clips <audio> [--model small|medium] [--render]`：
+  在 `out/<檔名>/transcript.json` 已存在時直接重用（否則先轉錄一次），從逐字稿切出
+  5～10 個 30～90 秒的候選片段，見下面「Clips」。
 - `python -m podcast_autopilot run <episode.yaml> [--profile default] [--model small|medium] [--skip STAGE ...] [--force] [--dry-run]`：
   一個指令跑完整條後製線，見下面「一鍵執行」。
 
@@ -117,6 +120,33 @@ Streamlit 介面勾選/取消 filler 提案）之後重新執行同一個指令�
 `ran`／`cached`，不會真的執行任何東西（預覽寫到 `RUN_REPORT.dry-run.md`，
 不會蓋掉上一次真正執行的 `RUN_REPORT.md`）。`--skip STAGE` 讓某個 stage 直接
 沿用既有輸出檔（若該檔案還不存在會報錯）。
+
+## Clips
+
+`clips` 從 `out/<檔名>/transcript.json`（沒有的話先轉錄一次）切出適合當社群
+短片的候選片段，寫到 `out/<檔名>/clips.json`：
+
+```powershell
+python -m podcast_autopilot clips "路徑\到\你的錄音.wav"
+python -m podcast_autopilot clips "路徑\到\你的錄音.wav" --render
+```
+
+- 每個候選片段長度 30～90 秒，起訖點一定落在逐字稿的 segment 邊界上，且該邊界
+  前後都要有 >= `clips.pause_threshold_s`（預設 0.4 秒）的停頓，不會從一段話
+  中間切開。
+- 分數是本地、可解釋的線性組合，每個候選片段連同分數的各項組成一起寫進
+  `clips.json`：關鍵字密度（`profile.clips.keywords`，使用者可自行編輯的清單）、
+  問句（`？`/`?`）數量、數字出現次數、看起來像專有名詞的詞（大寫開頭的英文字或
+  引號／「」『』包起來的片段）、語速是否高於全集中位數，以及語助詞密度的扣分。
+- 有設定 `ANTHROPIC_API_KEY` 環境變數時，會額外呼叫 Claude Messages API
+  （`claude-opus-5`）重新排序這些候選片段；沒有設定這個環境變數、或呼叫失敗，
+  一律直接採用本地分數的排序，指令本身一定會成功。
+- 這些候選片段也會以 `kind: "clip"`、`enabled: false` 的形式寫進
+  `out/<檔名>/plan.json`（純資訊、不影響 `apply` 的渲染結果；`audit` 已經
+  接受 `clip` 這個 kind）。
+- `--render` 會把每個候選片段真的切出來，加上 100ms 淡入淡出、響度正規化到
+  `loudness_target_i`（預設 -16 LUFS），輸出到 `out/<檔名>/clips/<n>.mp3`，
+  並附上時間軸歸零到 0 的 `out/<檔名>/clips/<n>.srt`。
 
 輸出：`out/<episode>/RUN_REPORT.md`，內容包含每個 stage 的耗時、剪掉的
 秒數、清理前後的響度、轉錄檔路徑、目前停用（`enabled: false`）待人工

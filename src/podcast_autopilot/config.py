@@ -34,12 +34,15 @@ class AppConfig:
     filler_min_probability: float = 0.5
     denoise_engine: str = "auto"
     voice_chain: "VoiceChainConfig" = None  # type: ignore[assignment]
+    clips: "ClipsConfig" = None  # type: ignore[assignment]
 
     def __post_init__(self) -> None:
         if self.pauses is None:
             self.pauses = PauseConfig()
         if self.voice_chain is None:
             self.voice_chain = VoiceChainConfig(denoise_engine=self.denoise_engine)
+        if self.clips is None:
+            self.clips = ClipsConfig()
 
 
 @dataclass
@@ -53,6 +56,17 @@ class PauseConfig:
     head: float = 0.3
     tail: float = 1.0
     max_removed_fraction: float = 0.25
+
+
+@dataclass
+class ClipsConfig:
+    # User-editable topic keywords scored by `clips` (profile.clips.keywords);
+    # empty by default so a profile with no opinion on topic just skips that
+    # scoring component instead of matching everything.
+    keywords: list[str] = field(default_factory=list)
+    min_duration: float = 30.0
+    max_duration: float = 90.0
+    pause_threshold_s: float = 0.4
 
 
 @dataclass
@@ -80,6 +94,7 @@ def load_config(config_path: Path | None = None) -> AppConfig:
     data = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
     pauses = data.get("pauses") or {}
     voice = data.get("voice_chain") or {}
+    clips = data.get("clips") or {}
     denoise = data.get("denoise") or {}
     engine = str(denoise.get("engine", voice.get("denoise_engine", "auto")))
     return AppConfig(
@@ -92,6 +107,12 @@ def load_config(config_path: Path | None = None) -> AppConfig:
         filler_pause_threshold_s=float(data.get("filler_pause_threshold_s", 0.2)),
         filler_min_probability=float(data.get("filler_min_probability", 0.5)),
         denoise_engine=engine,
+        clips=ClipsConfig(
+            keywords=list(clips.get("keywords", [])),
+            min_duration=float(clips.get("min_duration", 30.0)),
+            max_duration=float(clips.get("max_duration", 90.0)),
+            pause_threshold_s=float(clips.get("pause_threshold_s", 0.4)),
+        ),
         voice_chain=VoiceChainConfig(
             denoise_engine=engine,
             highpass_hz=float(voice.get("highpass_hz", 80.0)),

@@ -55,3 +55,13 @@ pauses:
   head: 0.3
   tail: 1.0
   max_removed_fraction: 0.25
+
+# Clip-candidate scoring (used by `clips`). `keywords` is the only thing most
+# users need to edit: topic words whose density in a candidate window raises
+# its score. Windows are 30-90s long and always start/end at a segment
+# boundary preceded/followed by a pause >= pause_threshold_s.
+clips:
+  keywords: []
+  min_duration: 30.0
+  max_duration: 90.0
+  pause_threshold_s: 0.4
