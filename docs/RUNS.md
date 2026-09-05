@@ -84,7 +84,7 @@ new-episode form. A fresh episode id (`ep3-dashboard-run-ep03`) was used, so
 the `out/ep3.local` cache from the CLI run did not apply, as expected;
 every stage re-ran from scratch.
 
-- **Full run**: `POST /api/episodes/{id}/run`, watched via the live SSE
+- **Full run**: opened the episode in the dashboard, clicked Run, and watched the live SSE
   stage grid. The run's wall-clock spans several supervisor restarts (this
   task was interrupted three times by `error_max_turns` before its budget
   was raised — see the board history), so the raw elapsed time between
@@ -94,22 +94,23 @@ every stage re-ran from scratch.
   next un-cached stage instead of re-transcribing from the top — the same
   caching that makes "Reapply" cheap also made the dashboard resilient to
   the process being killed and restarted mid-run.
-- **Review**: opened both parts' plan/waveform. EP3-1 proposed one disabled
+- **Review**: in the dashboard review screen, opened both parts' plan/waveform. EP3-1 proposed one disabled
   filler (`filler-0001`, `然後` p=0.88); EP3-2 proposed one disabled filler
-  (`filler-0001`, `然後` p=0.54). Left EP3-1's as-is, enabled EP3-2's via
-  `PUT /api/episodes/{id}/parts/EP3-2/plan` (200 OK, re-audited
-  `seconds_removed` 7.32s -> matches the applied edit).
-- **Reapply**: `POST /api/episodes/{id}/run` again with the same body
-  (`force: false`). Caching worked as designed — `probe` / `clean` /
+   (`filler-0001`, `然後` p=0.54). Toggled EP3-1's disabled filler on and
+   back off with the UI checkbox and Save button (the on-disk `plan.json`
+   round-tripped both times), left it disabled, and confirmed EP3-2's filler
+   was enabled in the UI.
+- **Reapply**: clicked the dashboard's `儲存並重新套用` button; the page returned to episode detail with status `待審查`.
+   Caching worked as designed — `probe` / `clean` /
   `plan-pauses` / `transcribe` / `plan-fillers` stayed `cached` for both
   parts, EP3-1's `audit` / `apply` stayed `cached` (its plan did not
   change), and only EP3-2's `audit` (0.19s) and `apply` (15.80s) re-ran,
   followed by a full `assemble` (378.89s, both parts are joined into one
   file so any plan change forces a re-encode) - 397s wall for the whole
   reapply job, per `RUN_REPORT.md`'s stage table.
-- **Deliverables**: `GET /api/episodes/{id}/deliverables` lists `ep03.mp3`;
-  verified it plays by decoding it with `ffprobe` rather than a manual
-  listen through the UI (this task ran headless) - 2426.8s (~40.4 min),
+- **Deliverables**: opened the dashboard Deliverables page; its audio control
+   reported 2426.76s, and browser playback from 5s advanced to 6.26s after 3s
+   while `paused=false`. Supplemental `ffprobe` found 2426.8s (~40.4 min),
   96 kbps mono, -17.4 LUFS / -1.6 dBTP, ID3 tags (`title`/`artist`/`album`/
   `comment`) correctly populated from the episode manifest's `tags`.
 - Quality observations carry over from the CLI run above: filler proposals
@@ -140,19 +141,21 @@ clone:
   06:38:10 (~4m17s for pip+npm together) - `✓ built in 4.45s` for the Vite
   build itself.
 - `make-example` generated the two placeholder parts, uvicorn came up on
-  `http://0.0.0.0:18766` immediately after - about 5 minutes wall from clone
+  `http://0.0.0.0:18767` immediately after - about 5 minutes wall from clone
   to a serving dashboard.
 - `GET /api/health` returned `ffmpeg_ok: true` and the resolved ffmpeg/
   ffprobe paths; `GET /api/episodes` listed the bundled `episode.example`
   manifest.
-- Ran the bundled example the same way the UI would (`POST
-  /api/episodes/episode.example/run` with `model: small`), headless since
-  this check has no browser: no stage cache existed yet in the fresh clone's
+- Ran the bundled example through Playwright against the fresh clone's
+   served dashboard: opened `/episodes`, opened `episode.example`, clicked Run
+   with `model: small`, and waited on the rendered `已完成` status. The uncached
+   run had no stage cache in the fresh clone's
   `out/`, so `small` was downloaded from the HF Hub on first use (unauthenticated,
   rate-limit warning only, no failure) and `transcribe` actually ran instead
   of hitting cache (47.95 s on `example-part-1`, its only non-trivial stage;
   every other stage on both parts finished in low single-digit seconds).
-  Status reached `"done"`, `assembly.status: "ran (4.53s)"`.
+   Status reached `"done"` in the UI; the run completed in about 114s. A
+   cached rerun through the same UI flow produced `UI_EXAMPLE_PASS` in 0.3s.
 - Deliverable: `ep03.mp3`, confirmed by decoding with `ffprobe` (this check
   ran headless): 40.5 s, 96 kbps, matches the API's reported -16.4 LUFS /
   -3.6 dBTP. `GET /api/episodes/episode.example/deliverables` listed it plus
