@@ -2,17 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from typer.testing import CliRunner
+
 from podcast_autopilot.audit import audit_plan, sha256_of_file
+from podcast_autopilot.cli import app
 from podcast_autopilot.ffmpeg import generate_synthetic_audio
 from podcast_autopilot.plan import EditPlan, ProfileInfo, SourceInfo
-from podcast_autopilot.transcribe import (
-    Word,
-    detect_fillers,
-    filler_plan_items,
-    transcribe_audio,
-    write_markdown,
-    write_srt,
-)
+from podcast_autopilot.transcribe import Word, detect_fillers, filler_plan_items
 
 
 def test_detects_isolated_filler_with_pauses_on_both_sides():
@@ -107,21 +103,18 @@ def test_filler_items_pass_audit_when_contained_in_a_keep_item(tmp_path: Path):
 
 
 def test_transcribe_smoke_produces_three_artifacts(tmp_path: Path):
-    """Synthetic tone (no speech) should still transcribe without crashing."""
+    """Synthetic tone (no speech) should still transcribe without crashing, via the real CLI command."""
     source_path = tmp_path / "smoke_source.wav"
     generate_synthetic_audio(source_path, duration=30.0)
 
-    data = transcribe_audio(source_path, model_size="tiny")
-    assert data["schema"] == "podcast-autopilot.transcript/v1"
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        ["transcribe", str(source_path), "--model", "small", "--out-dir", str(tmp_path / "out")],
+    )
+    assert result.exit_code == 0, result.output
 
-    target_dir = tmp_path / "out"
-    target_dir.mkdir()
-    write_srt(data["segments"], target_dir / "transcript.srt")
-    write_markdown(data["segments"], target_dir / "transcript.md")
-    from podcast_autopilot.transcribe import save_transcript
-
-    save_transcript(data, target_dir / "transcript.json")
-
+    target_dir = tmp_path / "out" / source_path.stem
     assert (target_dir / "transcript.json").is_file()
     assert (target_dir / "transcript.srt").is_file()
     assert (target_dir / "transcript.md").is_file()

@@ -9,6 +9,7 @@ from typing import Optional
 import typer
 
 from . import apply as apply_mod
+from . import assemble as assemble_mod
 from . import audit as audit_mod
 from . import plan as plan_mod
 from . import probe as probe_mod
@@ -24,6 +25,16 @@ app = typer.Typer(add_completion=False, help="podcast-autopilot: CPU-only podcas
 
 def _load_app_config(config_path: Optional[Path]) -> AppConfig:
     return load_config(config_path)
+
+
+VALID_WHISPER_MODEL_SIZES = ("small", "medium")
+
+
+def _validate_model_size(model: Optional[str]) -> None:
+    if model is not None and model not in VALID_WHISPER_MODEL_SIZES:
+        raise typer.BadParameter(
+            f"must be one of {VALID_WHISPER_MODEL_SIZES}, got {model!r}", param_hint="--model"
+        )
 
 
 @app.command()
@@ -80,6 +91,7 @@ def transcribe(
     config_path: Optional[Path] = typer.Option(None, "--config", help="Path to a config YAML file"),
 ) -> None:
     """Transcribe audio to zh-TW (faster-whisper, CPU int8) and write transcript.json/.srt/.md."""
+    _validate_model_size(model)
     config = _load_app_config(config_path)
     model_size = model or config.whisper_model_size
 
@@ -135,6 +147,7 @@ def plan_fillers(
 
     Reuses out/<stem>/transcript.json if present instead of re-transcribing.
     """
+    _validate_model_size(model)
     config = _load_app_config(config_path)
     model_size = model or config.whisper_model_size
 
@@ -239,6 +252,26 @@ def selftest(
         f"delta={delta * 1000:.1f}ms"
     )
     typer.echo(f"receipt: {receipt_path}")
+
+
+@app.command()
+def assemble(
+    episode_yaml: Path = typer.Argument(..., exists=True, readable=True),
+    out_dir: Path = typer.Option(Path("out"), "--out-dir"),
+    config_path: Optional[Path] = typer.Option(None, "--config"),
+) -> None:
+    """Join parts, intro/outro, ducked BGM and chapters into a tagged episode MP3."""
+    config = _load_app_config(config_path)
+    try:
+        result = assemble_mod.assemble_episode(episode_yaml, out_dir, config)
+    except assemble_mod.AssembleError as exc:
+        typer.echo(f"ASSEMBLE FAILED: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(
+        f"ASSEMBLE OK: output={result['output']} duration={result['duration']:.3f}s "
+        f"lufs={result['loudness']['input_i']:.1f} tp={result['loudness']['input_tp']:.1f}"
+    )
+    typer.echo(f"receipt: {result['receipt']}")
 
 
 if __name__ == "__main__":

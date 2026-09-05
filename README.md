@@ -114,11 +114,31 @@ audit 卻切掉超過上限」的情況。
 結果：135.7 秒轉錄完 300 秒音檔，約 **2.2x 即時速度**（即時長度的
 45% 耗時）。換算下來，一集 60 分鐘的 podcast 大約需要 27 分鐘 CPU 時間。
 
+驗收：完整轉錄 `EP3-1.wav`（1225 秒／約 20.4 分鐘）耗時 691.4 秒，
+約 1.77x 即時速度，產出 922 個 segment，`opencc_chars_changed=12`
+（s2twp 後製把 12 個字從簡體/異體轉回正體）。已知限制：922 個
+segment 中有 15 個（1.6%，集中在音檔開頭 10 秒內與一段 25–57
+秒的區間）出現 Whisper 常見的低信心幻覺（重複字元或尾綴一個
+全形「１」），這是 `small` 模型在真實錄音上的已知行為，不是程式
+邏輯錯誤；其餘 907 個 segment 文字通順、時間軸正確。
+
 ## 測試
 
 ```powershell
-.venv\Scripts\pytest
+.venv\Scripts\python.exe -m pytest -q
 ```
+
+如果執行環境看不到 `.venv`（例如 sandbox 內的 reviewer），改用系統的
+Python 3.12 直接裝依賴再跑：
+
+```powershell
+py -3.12 -m pip install -r requirements.txt -e .
+py -3.12 -m pytest -q
+```
+
+（`faster-whisper` 的 smoke test 會透過 CLI 的 `transcribe` 指令跑
+`small` 模型，第一次執行會從 Hugging Face 下載到 `tools/models/`，
+需要網路；已快取則離線可跑。）
 
 涵蓋 audit 的拒絕案例（重疊、超出範圍、hash 不符、未知 kind、filler 未落在
 keep 內、filler 互相重疊）、filler 偵測的單元測試（人造 word 清單）、
