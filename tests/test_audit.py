@@ -93,6 +93,14 @@ def test_rejects_overlap_with_disabled_item(audio_file: Path):
     assert any("overlap" in e for e in result.errors)
 
 
+def test_rejects_non_finite_start_or_end(audio_file: Path):
+    source = SourceInfo(path=str(audio_file), sha256=sha256_of_file(audio_file), duration=10.0, sr=44100, channels=1)
+    items = [PlanItem(id="a", kind="keep", start=float("nan"), end=float("inf"))]
+    result = audit_plan(_make_plan(source, items), audio_file)
+    assert not result.ok
+    assert any("finite" in e for e in result.errors)
+
+
 def test_disabled_items_excluded_from_coverage(audio_file: Path):
     source = SourceInfo(path=str(audio_file), sha256=sha256_of_file(audio_file), duration=10.0, sr=44100, channels=1)
     items = [

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -50,6 +51,12 @@ def audit_plan(plan: EditPlan, audio_path: Path) -> AuditResult:
     for item in plan.items:
         if item.kind not in ALLOWED_KINDS:
             errors.append(f"item {item.id}: unknown kind '{item.kind}'")
+        if not (math.isfinite(item.start) and math.isfinite(item.end)):
+            # NaN/inf compare False against everything, so the range and
+            # ordering checks below would silently pass a malformed item;
+            # catch it here instead of falling through fail-open.
+            errors.append(f"item {item.id}: start/end must be finite, got [{item.start}, {item.end}]")
+            continue
         if item.end <= item.start:
             errors.append(f"item {item.id}: end ({item.end}) <= start ({item.start})")
         if item.start < 0 or item.end > duration:
