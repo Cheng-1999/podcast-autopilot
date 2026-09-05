@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from podcast_autopilot.assemble import assemble_episode
+from podcast_autopilot.assemble import AssembleError, assemble_episode
 from podcast_autopilot.config import AppConfig, resolve_ffmpeg_binaries
 from podcast_autopilot.ffmpeg import run_ffmpeg
 
@@ -157,3 +157,83 @@ def test_assemble_without_bgm_or_chapters(tmp_path: Path, config: AppConfig):
     assert result["output"].is_file()
     assert abs(result["duration"] - 1.5) <= 0.1
     assert result["chapters_json"] is None
+
+
+def _format_tags(path: Path, config: AppConfig) -> dict:
+    _, ffprobe = resolve_ffmpeg_binaries(config)
+    probe = subprocess.run(
+        [str(ffprobe), "-v", "error", "-print_format", "json", "-show_format", str(path)],
+        capture_output=True, text=True,
+    )
+    assert probe.returncode == 0, probe.stderr
+    return json.loads(probe.stdout)["format"].get("tags", {})
+
+
+def _write_manifest(tmp_path: Path, manifest: dict) -> Path:
+    manifest_path = tmp_path / "episode.yaml"
+    manifest_path.write_text(yaml.safe_dump(manifest, allow_unicode=True), encoding="utf-8")
+    return manifest_path
+
+
+def test_assemble_intro_outro_keep_full_duration_title_tag_and_true_peak(tmp_path: Path, config: AppConfig):
+    """Crossfades must not shorten the episode: duration = intro + parts + gaps + outro."""
+    _make_tone(tmp_path / "intro.wav", 2.0, config, freq=600)
+    _make_tone(tmp_path / "outro.wav", 1.5, config, freq=800)
+    _make_tone(tmp_path / "EP-1.wav", 3.0, config)
+    _make_tone(tmp_path / "EP-2.wav", 2.0, config)
+    manifest_path = _write_manifest(tmp_path, {
+        "title": "Intro Outro Episode",
+        "episode": 4,
+        "parts": ["EP-1.wav", "EP-2.wav"],
+        "intro": "intro.wav",
+        "outro": "outro.wav",
+        "tags": {"artist": "Tester"},
+    })
+
+    result = assemble_episode(manifest_path, tmp_path / "out", config)
+
+    expected_duration = 2.0 + 3.0 + 0.5 + 2.0 + 1.5
+    assert abs(result["duration"] - expected_duration) <= 0.1, result["duration"]
+
+    tags = {k.lower(): v for k, v in _format_tags(result["output"], config).items()}
+    assert tags.get("title") == "Intro Outro Episode"
+    assert tags.get("artist") == "Tester"
+    assert tags.get("track") == "4"
+
+    receipt = json.loads(result["receipt"].read_text(encoding="utf-8"))
+    assert receipt["loudness"]["input_tp"] <= config.loudness_target_tp + 0.3, receipt["loudness"]
+    assert len(receipt["inputs"]) == 4  # two parts + intro + outro
+
+
+@pytest.mark.parametrize("key,value", [("intro", "missing-intro.wav"), ("outro", "missing-outro.wav")])
+def test_assemble_rejects_missing_intro_or_outro(tmp_path: Path, config: AppConfig, key: str, value: str):
+    _make_tone(tmp_path / "solo.wav", 1.5, config)
+    manifest_path = _write_manifest(tmp_path, {"title": "Solo", "episode": 5, "parts": ["solo.wav"], key: value})
+    with pytest.raises(AssembleError, match=f"{key} not found"):
+        assemble_episode(manifest_path, tmp_path / "out", config)
+    assert not (tmp_path / "out" / "ep05" / "ep05.mp3").exists()
+
+
+def test_assemble_rejects_missing_bgm(tmp_path: Path, config: AppConfig):
+    _make_tone(tmp_path / "solo.wav", 1.5, config)
+    manifest_path = _write_manifest(tmp_path, {
+        "title": "Solo", "episode": 6, "parts": ["solo.wav"], "bgm": {"path": "no-such-bgm.wav"},
+    })
+    with pytest.raises(AssembleError, match="bgm not found"):
+        assemble_episode(manifest_path, tmp_path / "out", config)
+
+
+@pytest.mark.parametrize("chapters,message", [
+    ([{"start": "00:05", "title": "B"}, {"start": "00:03", "title": "A"}], "increasing order"),
+    ([{"start": "00:02", "title": "A"}, {"start": "00:02", "title": "B"}], "increasing order"),
+    ([{"start": "-5", "title": "A"}], "invalid timecode"),
+    ([{"start": "00:10", "title": "Past the end"}], "only"),
+])
+def test_assemble_rejects_malformed_chapters(tmp_path: Path, config: AppConfig, chapters: list, message: str):
+    _make_tone(tmp_path / "solo.wav", 1.5, config)
+    manifest_path = _write_manifest(tmp_path, {
+        "title": "Solo", "episode": 7, "parts": ["solo.wav"], "chapters": chapters,
+    })
+    with pytest.raises(AssembleError, match=message):
+        assemble_episode(manifest_path, tmp_path / "out", config)
+    assert not (tmp_path / "out" / "ep07" / "chapters.json").exists()

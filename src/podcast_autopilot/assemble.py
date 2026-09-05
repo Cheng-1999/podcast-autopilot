@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 import subprocess
 import tempfile
@@ -36,6 +37,9 @@ BGM_FADE_IN_S = 2.0
 BGM_FADE_OUT_S = 3.0
 LOUDNESS_TOLERANCE_LU = 1.0
 MAX_LOUDNORM_ATTEMPTS = 3
+TP_TOLERANCE_DB = 0.3
+MP3_TP_INITIAL_MARGIN_DB = 1.0
+MAX_TP_ATTEMPTS = 3
 
 
 class AssembleError(RuntimeError):
@@ -188,12 +192,20 @@ def _concat_parts_with_gaps(parts: list[Path], gap_path: Path, fmt: _Format, tem
 
 
 def _crossfade_join(a: Path, b: Path, fmt: _Format, tempdir: Path, config: AppConfig, out_name: str) -> Path:
+    """Join a then b with a CROSSFADE_S fade-out / fade-in at the seam.
+
+    acrossfade runs with overlap disabled (o=0): the tail of `a` fades out
+    over CROSSFADE_S and the head of `b` fades in over CROSSFADE_S, butt-joined.
+    With the default overlapping crossfade every join would eat CROSSFADE_S of
+    programme, which breaks the contract that the episode length equals
+    intro + parts + gaps + outro.
+    """
     output = tempdir / out_name
     layout = _layout(fmt.channels)
     filter_complex = (
         f"[0:a]aformat=sample_rates={fmt.sr}:channel_layouts={layout}[a0];"
         f"[1:a]aformat=sample_rates={fmt.sr}:channel_layouts={layout}[a1];"
-        f"[a0][a1]acrossfade=d={CROSSFADE_S:g}[out]"
+        f"[a0][a1]acrossfade=d={CROSSFADE_S:g}:o=0[out]"
     )
     run_ffmpeg([
         "-i", str(a), "-i", str(b), "-filter_complex", filter_complex,
@@ -221,8 +233,12 @@ def _apply_bgm(voice: Path, bgm: BgmConfig, base_dir: Path, fmt: _Format, tempdi
         f"aformat=sample_rates={fmt.sr}:channel_layouts={layout}[bgm];"
         f"[1:a]aformat=sample_rates={fmt.sr}:channel_layouts={layout},asplit=2[voice_sc][voice_mix];"
         f"[bgm][voice_sc]sidechaincompress=threshold={duck.threshold:g}:ratio={duck.ratio:g}:"
-        f"attack={duck.attack:g}:release={duck.release:g}[ducked];"
-        f"[ducked][voice_mix]amix=inputs=2:duration=first:normalize=0[out]"
+        f"attack={duck.attack:g}:release={duck.release:g},apad[ducked];"
+        # Voice is the first amix input so duration=first anchors the mix to the
+        # programme length; sidechaincompress can end the BGM branch a few
+        # hundred ms early, so it is padded with silence rather than allowed to
+        # shorten the episode.
+        f"[voice_mix][ducked]amix=inputs=2:duration=first:normalize=0[out]"
     )
     run_ffmpeg([
         "-i", str(looped), "-i", str(voice), "-filter_complex", filter_complex,
@@ -255,12 +271,14 @@ def _loudnorm_once(input_path: Path, output_path: Path, target_i: float, target_
     return measured
 
 
-def _normalize_to_target(input_path: Path, fmt: _Format, target_i: float, target_tp: float, target_lra: float, tempdir: Path, config: AppConfig) -> Path:
+def _loudnorm_to_lufs(input_path: Path, fmt: _Format, target_i: float, target_tp: float, target_lra: float, tempdir: Path, config: AppConfig) -> Path:
     """Two-pass loudnorm, iterated: a single linear pass can undershoot on very
     wide-dynamic-range sources (loudnorm silently falls back to its adaptive
     'dynamic' mode when a linear gain would blow the true-peak ceiling), so
     re-measuring and re-applying against the fresh output converges within a
-    couple of attempts instead of leaving the episode off target.
+    couple of attempts instead of leaving the episode off target. Peak
+    ceiling is enforced later, against the exported MP3, since lossy encoding
+    can add its own inter-sample overshoot on top of anything limited here.
     """
     current = input_path
     for attempt in range(MAX_LOUDNORM_ATTEMPTS):
@@ -271,21 +289,52 @@ def _normalize_to_target(input_path: Path, fmt: _Format, target_i: float, target
         lufs = float(result.get("input_i", "nan"))
         if abs(lufs - target_i) <= LOUDNESS_TOLERANCE_LU:
             break
-    final = tempdir / "final.wav"
+    return current
+
+
+def _apply_peak_ceiling(input_path: Path, fmt: _Format, ceiling_db: float, tempdir: Path, config: AppConfig, attempt: int) -> Path:
+    output = tempdir / f"peak-ceiling-{attempt}.wav"
+    limit = 10 ** (ceiling_db / 20.0)
     run_ffmpeg([
-        "-i", str(current), "-af", f"alimiter=limit={10 ** (target_tp / 20.0):.6f}",
+        "-i", str(input_path), "-af", f"alimiter=limit={limit:.6f}:level=0",
         "-ar", str(fmt.sr), "-ac", str(fmt.channels), "-c:a", "pcm_f32le",
-        str(final),
+        str(output),
     ], config)
-    return final
+    return output
 
 
 def _format_ffmetadata_time(seconds: float) -> int:
     return int(round(seconds * 1000))
 
 
+def _chapter_starts(chapters: list[ChapterEntry]) -> list[float]:
+    """Parse and validate chapter starts: finite, non-negative, strictly increasing."""
+    starts: list[float] = []
+    for i, chapter in enumerate(chapters):
+        start = parse_timecode(chapter.start)
+        if not math.isfinite(start) or start < 0:
+            raise AssembleError(f"chapter {i + 1} ({chapter.title!r}) has invalid start {chapter.start!r}")
+        if starts and start <= starts[-1]:
+            raise AssembleError(
+                f"chapter {i + 1} ({chapter.title!r}) starts at {chapter.start!r}, "
+                f"not after the previous chapter ({chapters[i - 1].start!r}); chapters must be in increasing order"
+            )
+        starts.append(start)
+    return starts
+
+
+def _check_chapters_within(chapters: list[ChapterEntry], starts: list[float], duration: float) -> None:
+    for chapter, start in zip(chapters, starts):
+        if start >= duration:
+            raise AssembleError(
+                f"chapter {chapter.title!r} starts at {chapter.start!r} ({start:.3f}s) "
+                f"but the episode is only {duration:.3f}s long"
+            )
+
+
 def _write_chapter_files(chapters: list[ChapterEntry], duration: float, out_dir: Path) -> tuple[Path, Path, Path]:
-    starts = [parse_timecode(c.start) for c in chapters]
+    starts = _chapter_starts(chapters)
+    _check_chapters_within(chapters, starts, duration)
     entries = []
     for i, chapter in enumerate(chapters):
         start = starts[i]
@@ -322,6 +371,7 @@ def _export_mp3(
     ffmetadata_path: Path | None,
     output_path: Path,
     is_mono: bool,
+    title: str,
     tags: TagsConfig,
     episode_number: int,
     config: AppConfig,
@@ -334,6 +384,7 @@ def _export_mp3(
     args += ["-map", "0:a", *metadata_map]
 
     args += ["-id3v2_version", "3", "-write_id3v1", "1"]
+    args += ["-metadata", f"title={title}"]
     if tags.artist:
         args += ["-metadata", f"artist={tags.artist}"]
     if tags.album:
@@ -366,6 +417,20 @@ def assemble_episode(manifest_path: Path, out_dir: Path = Path("out"), config: A
         if not part.is_file():
             raise AssembleError(f"part not found: {part}")
 
+    intro_path = _resolve(manifest.intro, base_dir) if manifest.intro else None
+    outro_path = _resolve(manifest.outro, base_dir) if manifest.outro else None
+    bgm_path = _resolve(manifest.bgm.path, base_dir) if manifest.bgm else None
+    for label, path in (("intro", intro_path), ("outro", outro_path), ("bgm", bgm_path)):
+        if path is not None and not path.is_file():
+            raise AssembleError(f"{label} not found: {path}")
+    for label, path in (("intro", intro_path), ("outro", outro_path)):
+        if path is not None and probe_audio(path, config)["duration"] < CROSSFADE_S:
+            raise AssembleError(f"{label} {path} is shorter than the {CROSSFADE_S:g}s crossfade")
+
+    # Fail fast on malformed chapters (order, negativity) before minutes of ffmpeg
+    # work; the duration bound is checked once the final length is known.
+    chapter_starts = _chapter_starts(manifest.chapters)
+
     part_infos = [probe_audio(part, config) for part in part_paths]
     is_mono = all(info["channels"] == 1 for info in part_infos)
     fmt = _Format(sr=int(part_infos[0]["sr"]), channels=1 if is_mono else 2)
@@ -386,41 +451,62 @@ def assemble_episode(manifest_path: Path, out_dir: Path = Path("out"), config: A
             body = part_paths[0]
 
         voice = body
-        if manifest.intro:
-            intro_path = _resolve(manifest.intro, base_dir)
+        if intro_path is not None:
             input_records.append({"path": str(intro_path), "sha256": sha256_of_file(intro_path)})
             voice = _crossfade_join(intro_path, voice, fmt, tempdir, config, "with_intro.wav")
-        if manifest.outro:
-            outro_path = _resolve(manifest.outro, base_dir)
+        if outro_path is not None:
             input_records.append({"path": str(outro_path), "sha256": sha256_of_file(outro_path)})
             voice = _crossfade_join(voice, outro_path, fmt, tempdir, config, "with_outro.wav")
 
         mixed = voice
-        if manifest.bgm:
-            bgm_path = _resolve(manifest.bgm.path, base_dir)
+        if manifest.bgm and bgm_path is not None:
             input_records.append({"path": str(bgm_path), "sha256": sha256_of_file(bgm_path)})
             mixed = _apply_bgm(voice, manifest.bgm, base_dir, fmt, tempdir, config)
 
-        final_wav = _normalize_to_target(
+        loud_normalized = _loudnorm_to_lufs(
             mixed, fmt,
             config.loudness_target_i, config.loudness_target_tp, 11.0,
             tempdir, config,
         )
 
-        duration = probe_audio(final_wav, config)["duration"]
+        duration = probe_audio(loud_normalized, config)["duration"]
 
         ffmetadata_path = None
         chapters_json_path = None
         chapters_txt_path = None
         if manifest.chapters:
+            _check_chapters_within(manifest.chapters, chapter_starts, duration)
             ffmetadata_path, chapters_json_path, chapters_txt_path = _write_chapter_files(
                 manifest.chapters, duration, target_dir
             )
 
+        # MP3 encoding adds inter-sample "true peak" overshoot on top of any
+        # sample-peak limiting done on the WAV, so the ceiling fed to the
+        # limiter is measured and corrected against the actual exported MP3
+        # rather than trusted from the WAV alone. Fail closed: an MP3 that is
+        # still over the ceiling after MAX_TP_ATTEMPTS is an error, not a
+        # silently accepted export.
         output_mp3 = target_dir / f"{stem}.mp3"
-        _export_mp3(final_wav, ffmetadata_path, output_mp3, is_mono, manifest.tags, manifest.episode, config)
+        tp_ceiling = config.loudness_target_tp + TP_TOLERANCE_DB
+        ceiling_db = config.loudness_target_tp - MP3_TP_INITIAL_MARGIN_DB
+        loudness: dict = {}
+        tp = math.nan
+        for attempt in range(MAX_TP_ATTEMPTS):
+            final_wav = _apply_peak_ceiling(loud_normalized, fmt, ceiling_db, tempdir, config, attempt)
+            _export_mp3(final_wav, ffmetadata_path, output_mp3, is_mono, manifest.title, manifest.tags, manifest.episode, config)
+            loudness = measure_loudness(output_mp3, config)
+            tp = float(loudness.get("input_tp", "nan"))
+            if math.isfinite(tp) and tp <= tp_ceiling:
+                break
+            ceiling_db -= (tp - config.loudness_target_tp) + 0.5 if math.isfinite(tp) else 1.0
+        else:
+            output_mp3.unlink(missing_ok=True)
+            raise AssembleError(
+                f"true peak {tp:.2f} dBTP still above {config.loudness_target_tp:g} dBTP "
+                f"(+{TP_TOLERANCE_DB:g} dB tolerance) after {MAX_TP_ATTEMPTS} limiter passes; "
+                "no MP3 written"
+            )
 
-    loudness = measure_loudness(output_mp3, config)
     output_info = probe_audio(output_mp3, config)
 
     receipt = {
