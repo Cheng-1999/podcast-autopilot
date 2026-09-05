@@ -86,6 +86,7 @@ class Job:
         part_id: Optional[str] = None,
         part_dir: Optional[Path] = None,
         render: bool = False,
+        audio_path: Optional[Path] = None,
     ):
         self.id = job_id
         self.episode_id = episode_id
@@ -101,6 +102,7 @@ class Job:
         self.part_id = part_id
         self.part_dir = Path(part_dir) if part_dir is not None else None
         self.render = render
+        self.audio_path = Path(audio_path) if audio_path is not None else None
 
         self.status = "queued"  # queued|running|done|failed|cancelled
         self.error: Optional[str] = None
@@ -194,11 +196,12 @@ class JobManager:
         config: AppConfig,
         out_dir: Path,
         render: bool,
+        audio_path: Optional[Path] = None,
     ) -> Job:
         job_id = uuid.uuid4().hex[:12]
         job = Job(
             job_id, episode_id, kind="clips", config=config, out_dir=out_dir,
-            part_id=part_id, part_dir=part_dir, render=render,
+            part_id=part_id, part_dir=part_dir, render=render, audio_path=audio_path,
         )
         with self._lock:
             self._jobs[job_id] = job
@@ -288,25 +291,39 @@ class JobManager:
 
 def _run_clips_job(job: Job) -> None:
     """Build (and optionally render) clip candidates for job.part_id, reusing
-    the transcript and clean audio already produced by a prior `run` job."""
+    the transcript already produced by a prior `run` job.
+
+    Candidate generation only needs `transcript.json`; audio (clean, or the
+    original source before the pipeline reaches the `clean` stage) is only
+    required when `render` is requested, since that is the only step that
+    actually reads samples from it.
+    """
     part_dir = job.part_dir
     transcript_path = part_dir / "transcript.json"
     if not transcript_path.is_file():
         raise run_mod.RunError(f"transcript not found: {transcript_path}; run the pipeline first")
-    audio_path = part_dir / f"{job.part_id}.clean.wav"
-    if not audio_path.is_file():
-        raise run_mod.RunError(f"clean audio not found: {audio_path}; run the pipeline first")
+    audio_path = job.audio_path
+    if job.render and (audio_path is None or not audio_path.is_file()):
+        raise run_mod.RunError(f"no audio found for part {job.part_id}; run the pipeline first")
 
     job.add_event("started", stage="clips", part=job.part_id)
     t0 = time.monotonic()
     data = transcribe_mod.load_transcript(transcript_path)
     candidates = clips_mod.build_candidates(data, job.config)
     candidates = clips_mod.rerank_with_llm(candidates, job.config)
-    source_info = probe_mod.probe_audio(audio_path, job.config)
+    if audio_path is not None and audio_path.is_file():
+        source_info = probe_mod.probe_audio(audio_path, job.config)
+        source = {
+            "path": str(audio_path),
+            "sha256": audit_mod.sha256_of_file(audio_path),
+            "duration": source_info["duration"],
+        }
+    else:
+        source = {"path": None, "sha256": None, "duration": None}
     clips_path = part_dir / "clips.json"
     clips_mod.write_clips_json(
         candidates,
-        source={"path": str(audio_path), "sha256": audit_mod.sha256_of_file(audio_path), "duration": source_info["duration"]},
+        source=source,
         transcript_record={"path": str(transcript_path), "sha256": audit_mod.sha256_of_file(transcript_path)},
         keywords=(job.config.clips.keywords if job.config and job.config.clips else []),
         out_path=clips_path,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import time
 from pathlib import Path
 
@@ -240,3 +241,86 @@ def test_clips_post_without_transcript_is_404(client):
     c, _root = client
     resp = c.post("/api/episodes/episode.example/parts/part1/clips", json={"render": False})
     assert resp.status_code == 404
+
+
+def _write_minimal_transcript(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    segments = [
+        {"id": 0, "start": 0.0, "end": 1.0, "text": "hello there", "words": []},
+        {"id": 1, "start": 1.6, "end": 2.6, "text": "this is a test clip", "words": []},
+    ]
+    path.write_text(
+        json.dumps({"schema": "podcast-autopilot.transcript/v1", "segments": segments}),
+        encoding="utf-8",
+    )
+
+
+def test_clips_post_before_clean_stage_falls_back_to_source_audio(client, tmp_path):
+    c, root = client
+    src_wav = tmp_path / "pre_clean.wav"
+    generate_synthetic_audio(src_wav, duration=5.0)
+    create_resp = c.post(
+        "/api/episodes",
+        json={"title": "Pre Clean", "episode": 7, "parts": [str(src_wav.resolve())]},
+    )
+    episode_id = create_resp.json()["id"]
+    part_id = src_wav.stem
+
+    part_dir = root / "out" / episode_id / "parts" / part_id
+    _write_minimal_transcript(part_dir / "transcript.json")
+    assert not (part_dir / f"{part_id}.clean.wav").is_file()
+
+    resp = c.post(f"/api/episodes/{episode_id}/parts/{part_id}/clips", json={"render": False})
+    assert resp.status_code == 200
+    job = _wait_for_job(c, resp.json()["id"])
+    assert job["status"] == "done", job
+
+    clips_data = json.loads((part_dir / "clips.json").read_text(encoding="utf-8"))
+    assert clips_data["source"]["path"] == str(src_wav.resolve())
+    assert clips_data["source"]["sha256"] is not None
+
+
+def test_clips_post_render_false_without_any_audio_still_succeeds(client, tmp_path):
+    c, root = client
+    src_wav = tmp_path / "vanishing.wav"
+    generate_synthetic_audio(src_wav, duration=5.0)
+    create_resp = c.post(
+        "/api/episodes",
+        json={"title": "Vanishing", "episode": 8, "parts": [str(src_wav.resolve())]},
+    )
+    episode_id = create_resp.json()["id"]
+    part_id = src_wav.stem
+
+    part_dir = root / "out" / episode_id / "parts" / part_id
+    _write_minimal_transcript(part_dir / "transcript.json")
+    src_wav.unlink()  # no clean audio and no source file either
+
+    resp = c.post(f"/api/episodes/{episode_id}/parts/{part_id}/clips", json={"render": False})
+    assert resp.status_code == 200
+    job = _wait_for_job(c, resp.json()["id"])
+    assert job["status"] == "done", job
+
+    clips_data = json.loads((part_dir / "clips.json").read_text(encoding="utf-8"))
+    assert clips_data["source"]["path"] is None
+    assert "candidates" in clips_data
+
+
+def test_clips_post_render_true_without_any_audio_fails(client, tmp_path):
+    c, root = client
+    src_wav = tmp_path / "no_render_audio.wav"
+    generate_synthetic_audio(src_wav, duration=5.0)
+    create_resp = c.post(
+        "/api/episodes",
+        json={"title": "No Render Audio", "episode": 11, "parts": [str(src_wav.resolve())]},
+    )
+    episode_id = create_resp.json()["id"]
+    part_id = src_wav.stem
+
+    part_dir = root / "out" / episode_id / "parts" / part_id
+    _write_minimal_transcript(part_dir / "transcript.json")
+    src_wav.unlink()
+
+    resp = c.post(f"/api/episodes/{episode_id}/parts/{part_id}/clips", json={"render": True})
+    assert resp.status_code == 200
+    job = _wait_for_job(c, resp.json()["id"])
+    assert job["status"] == "failed", job

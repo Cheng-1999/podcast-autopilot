@@ -492,6 +492,8 @@ def post_clips(episode_id: str, part_id: str, body: ClipsRequest, request: Reque
     if not transcript_path.is_file():
         raise HTTPException(404, "transcript.json not found; run the pipeline first")
 
+    audio_path = _part_wav_for_peaks(ref, part_dir, part_id)
+
     config = load_config(None)
     job = job_manager.submit_clips(
         episode_id=episode_id,
@@ -500,6 +502,7 @@ def post_clips(episode_id: str, part_id: str, body: ClipsRequest, request: Reque
         config=config,
         out_dir=project_root / "out",
         render=body.render,
+        audio_path=audio_path,
     )
     return job.to_dict()
 

@@ -691,7 +691,12 @@ and `candidates[]` (each with `id`, `start`, `end`, `text`, `score`, `score_comp
 Enqueues a background job (on the same job queue/SSE stream as `POST /api/episodes/{id}/run`) that
 scores clip candidates from the part's transcript (`transcribe_mod` + `clips_mod.build_candidates` /
 `rerank_with_llm`) and writes `out/{id}/parts/{part}/clips.json`. Requires `transcript.json` to
-already exist (run the pipeline through the `transcribe` stage first).
+already exist (run the pipeline through the `transcribe` stage first); it does **not** require the
+part's clean audio, so candidates can be generated as soon as a transcript exists.
+
+The job resolves audio the same way `GET .../peaks` does (`{part}.clean.wav`, falling back to the
+original source file before the pipeline reaches the `clean` stage) to record `source.sha256`/
+`source.duration` in `clips.json` when available; if neither exists yet, those fields are `null`.
 
 #### Request Body
 
@@ -700,7 +705,8 @@ already exist (run the pipeline through the `transcribe` stage first).
 ```
 
 - `render` *(boolean, optional, default: false)*: also cut each candidate to
-  `out/{id}/parts/{part}/clips/<n>.mp3` + `.srt`.
+  `out/{id}/parts/{part}/clips/<n>.mp3` + `.srt`. Rendering does require audio (clean or source) to
+  cut from; the job fails if none is found.
 
 #### Response (200 OK)
 
