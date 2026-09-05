@@ -51,7 +51,7 @@ def selftest(
         path=str(source_path),
         sha256=audit_mod.sha256_of_file(source_path),
         duration=source_info["duration"],
-        sr=source_info["sample_rate"],
+        sr=source_info["sr"],
         channels=source_info["channels"],
     )
     profile = plan_mod.ProfileInfo(name="selftest", sha256=None)

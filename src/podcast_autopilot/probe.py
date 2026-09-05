@@ -24,8 +24,8 @@ def probe_audio(path: Path, config: AppConfig | None = None) -> dict:
 
     return {
         "path": str(path),
-        "codec_name": stream.get("codec_name"),
-        "sample_rate": int(stream["sample_rate"]) if stream.get("sample_rate") else None,
+        "codec": stream.get("codec_name"),
+        "sr": int(stream["sample_rate"]) if stream.get("sample_rate") else None,
         "channels": stream.get("channels"),
         "sample_fmt": stream.get("sample_fmt"),
         "duration": duration,
