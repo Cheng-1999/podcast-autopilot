@@ -11,8 +11,9 @@ from .ffmpeg import run_ffmpeg, run_ffprobe_json
 from .plan import EditPlan, PlanItem, ProfileInfo, SourceInfo, SCHEMA_ID, save_plan
 from .probe import probe_audio
 
-_START = re.compile(r"silence_start:\s*([0-9.]+)")
-_END = re.compile(r"silence_end:\s*([0-9.]+)")
+_TIMESTAMP = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)"
+_START = re.compile(rf"silence_start:\s*({_TIMESTAMP})")
+_END = re.compile(rf"silence_end:\s*({_TIMESTAMP})")
 
 
 def detect_silences(audio_path: Path, config: AppConfig | None = None) -> list[tuple[float, float]]:
@@ -41,7 +42,7 @@ def detect_silences(audio_path: Path, config: AppConfig | None = None) -> list[t
 
 
 def _candidate_cuts(silences: list[tuple[float, float]], duration: float, p: PauseConfig) -> list[tuple[float, float, float]]:
-    candidates: list[tuple[float, float, float, bool]] = []
+    candidates: list[tuple[float, float, float, bool, bool]] = []
     for start, end in silences:
         length = end - start
         if length <= p.max_keep:
@@ -57,17 +58,24 @@ def _candidate_cuts(silences: list[tuple[float, float]], duration: float, p: Pau
         cut_start = max(start, cut_start)
         cut_end = min(end, cut_end)
         if cut_end > cut_start:
-            candidates.append((cut_start, cut_end, length, start <= 0.001 or end >= duration - 0.001))
+            candidates.append((cut_start, cut_end, length, start <= 0.001, end >= duration - 0.001))
 
     # A cut must not strand a tiny output segment. Leading/trailing policy is
     # intentionally allowed to be below min_segment (head defaults to .3s).
-    accepted: list[tuple[float, float, float, bool]] = []
-    for candidate in candidates:
-        start, end, length, edge = candidate
-        if start > p.min_segment and duration - end > p.min_segment:
+    accepted: list[tuple[float, float, float, bool, bool]] = []
+    for index, candidate in enumerate(candidates):
+        start, end, length, leading, trailing = candidate
+        previous_end = candidates[index - 1][1] if index else 0.0
+        next_start = candidates[index + 1][0] if index + 1 < len(candidates) else duration
+        # Check the actual keep spans created by the complement renderer. The
+        # old absolute-position check missed short speech spans between two
+        # otherwise valid cuts.
+        before_ok = start - previous_end >= p.min_segment
+        after_ok = next_start - end >= p.min_segment
+        if (before_ok or leading) and (after_ok or trailing):
             accepted.append(candidate)
-        elif edge:
-            accepted.append(candidate)
+        # Leading/trailing policies intentionally allow head/tail below
+        # min_segment (the defaults are 0.3s and 1.0s respectively).
     return accepted
 
 
@@ -78,7 +86,7 @@ def build_pause_plan(audio_path: Path, config: AppConfig | None = None) -> EditP
     cuts = _candidate_cuts(detect_silences(audio_path, config), info["duration"], p)
     items = [PlanItem(id=f"cut-{idx:04d}", kind="cut", start=start, end=end,
                       reason=f"pause {length:.2f}s -> {length - (end-start):.2f}s", enabled=True)
-             for idx, (start, end, length, _edge) in enumerate(cuts, 1)]
+             for idx, (start, end, length, _leading, _trailing) in enumerate(cuts, 1)]
     source = SourceInfo(path=str(audio_path), sha256=sha256_of_file(audio_path), duration=info["duration"],
                         sr=info["sr"], channels=info["channels"])
     profile = ProfileInfo(name=config.profile_name, max_removed_fraction=p.max_removed_fraction)
