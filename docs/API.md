@@ -10,11 +10,16 @@ When `web/dist` exists, all other non-API routes serve static assets with an SPA
 - [Overview](#overview)
 - [System & Health](#system--health)
   - [`GET /api/health`](#get-apihealth)
+- [Uploads](#uploads)
+  - [`POST /api/uploads`](#post-apiuploads)
 - [Episodes](#episodes)
   - [`GET /api/episodes`](#get-apiepisodes)
+  - [`POST /api/episodes`](#post-apiepisodes)
+  - [`PUT /api/episodes/{id}`](#put-apiepisodesid)
   - [`GET /api/episodes/{id}`](#get-apiepisodesid)
   - [`GET /api/episodes/{id}/report`](#get-apiepisodesidreport)
   - [`POST /api/episodes/{id}/run`](#post-apiepisodesidrun)
+  - [`GET /api/episodes/{id}/deliverables`](#get-apiepisodesiddeliverables)
 - [Jobs & Real-time Progress](#jobs--real-time-progress)
   - [`GET /api/jobs/{id}`](#get-apijobsid)
   - [`GET /api/jobs/{id}/events`](#get-apijobsidevents)
@@ -23,6 +28,10 @@ When `web/dist` exists, all other non-API routes serve static assets with an SPA
   - [`GET /api/episodes/{id}/parts/{part}/plan`](#get-apiepisodesidpartspartplan)
   - [`PUT /api/episodes/{id}/parts/{part}/plan`](#put-apiepisodesidpartspartplan)
   - [`GET /api/episodes/{id}/parts/{part}/transcript`](#get-apiepisodesidpartsparttranscript)
+  - [`GET /api/episodes/{id}/parts/{part}/peaks`](#get-apiepisodesidpartspartpeaks)
+- [Clips](#clips)
+  - [`GET /api/episodes/{id}/parts/{part}/clips`](#get-apiepisodesidpartspartclips)
+  - [`POST /api/episodes/{id}/parts/{part}/clips`](#post-apiepisodesidpartspartclips)
 - [Media Serving](#media-serving)
   - [`GET /api/media/{episode}/{path}`](#get-apimediaepisodepath)
 - [SPA Static Serving](#spa-static-serving)
@@ -58,6 +67,42 @@ Reports system dependencies, installed ffmpeg/ffprobe binaries, cached whisper m
   "free_disk_gb": 633.4
 }
 ```
+
+---
+
+## Uploads
+
+### `POST /api/uploads`
+
+Two request modes, selected by `Content-Type`.
+
+**Multipart** (`multipart/form-data`): stores a new audio file under `media/<episode>/<original name>`.
+- `file` *(required)*: the audio file. Extension must be one of `.wav`, `.mp3`, `.flac`, `.m4a` (case-insensitive); anything else is rejected with `415`.
+- `episode` *(optional form field)*: subdirectory name under `media/` (defaults to `_uploads`). Sanitized to its base name only (no path traversal).
+
+**JSON** (`application/json`): registers an existing local file without copying it.
+```json
+{ "path": "C:\\Users\\me\\Desktop\\podcast\\raw-take.wav" }
+```
+`path` must be absolute and must already exist on this machine.
+
+Both modes probe the resulting file with `probe_mod.probe_audio` and return the same shape. The returned `path` is always absolute, so it can be passed straight into `parts` on `POST /api/episodes` (episode manifests resolve relative part paths against the manifest's own directory, so an absolute path is the only form that works regardless of where the part physically lives).
+
+#### Response (200 OK)
+
+```json
+{
+  "path": "C:\\Users\\a8878\\OneDrive\\桌面\\podcast-autopilot\\media\\my-episode\\raw-take.wav",
+  "duration": 2431.7,
+  "sr": 44100,
+  "channels": 1
+}
+```
+
+#### Error Responses
+- `422 Unprocessable Entity`: missing `file`/`path`, or a JSON `path` that is not absolute.
+- `404 Not Found`: JSON `path` does not exist.
+- `415 Unsupported Media Type`: multipart upload has a disallowed extension, or the stored/registered file fails to probe as audio.
 
 ---
 
@@ -117,6 +162,69 @@ Lists all manifests discovered under `episodes/*.yaml` (real user episodes) and 
 - `done`: Pipeline completed without unreviewed filler items.
 - `failed`: Pipeline run failed or was interrupted.
 - `invalid`: Manifest YAML could not be loaded or parsed.
+
+---
+
+### `POST /api/episodes`
+
+Creates a new episode manifest at `episodes/<slug>.yaml`, where `<slug>` is derived from `title` and `episode`
+(e.g. `"Deep Dive" episode 3` → `deep-dive-ep03`). Body mirrors `assemble_mod.EpisodeManifest`
+(`title`, `episode`, `parts[]`, `intro`, `outro`, `bgm`, `chapters[]`, `tags`); `parts` entries are typically the
+absolute paths returned by `POST /api/uploads`.
+
+Every part must already exist and probe as audio; every chapter's `start` must fall strictly before the
+sum of the parts' durations (an approximation used only at creation time — the real bound, including
+intro/outro/bgm, is enforced again at assembly).
+
+#### Request Body
+
+```json
+{
+  "title": "Deep Dive",
+  "episode": 3,
+  "parts": ["C:\\Users\\a8878\\OneDrive\\桌面\\podcast-autopilot\\media\\my-episode\\raw-take.wav"],
+  "chapters": [{ "start": "00:00", "title": "Intro" }]
+}
+```
+
+#### Response (200 OK)
+
+```json
+{ "id": "deep-dive-ep03", "path": "episodes\\deep-dive-ep03.yaml" }
+```
+
+#### Error Responses
+- `422 Unprocessable Entity`: body fails `EpisodeManifest` validation, a part does not exist/probe, or a
+  chapter starts at or after the parts' total duration.
+- `409 Conflict`: an episode with the same id already exists (in `episodes/` or `examples/`).
+
+---
+
+### `PUT /api/episodes/{id}`
+
+Updates only `chapters` and `tags` on an existing **real** (non-bundled) episode manifest; `title`,
+`episode` and `parts` cannot be changed once created. Chapters are re-validated against the parts'
+total duration exactly as in `POST /api/episodes`.
+
+#### Request Body
+
+```json
+{
+  "chapters": [{ "start": "00:00", "title": "Intro" }, { "start": "05:00", "title": "Main topic" }],
+  "tags": { "artist": "Me", "album": "My Podcast" }
+}
+```
+
+#### Response (200 OK)
+
+```json
+{ "id": "deep-dive-ep03", "path": "episodes\\deep-dive-ep03.yaml" }
+```
+
+#### Error Responses
+- `400 Bad Request`: `{id}` is a bundled example manifest (`examples/*.yaml`), which is read-only.
+- `404 Not Found`: episode not found.
+- `422 Unprocessable Entity`: manifest invalid, or a chapter starts at or after the parts' total duration.
 
 ---
 
@@ -254,6 +362,39 @@ Enqueues a background pipeline execution job for episode `{id}`. Jobs are strict
 #### Error Responses
 - `404 Not Found`: Episode not found.
 - `422 Unprocessable Entity`: Unknown skip stages or invalid model size.
+
+---
+
+### `GET /api/episodes/{id}/deliverables`
+
+Lists every finished output for an episode, each as a `/api/media/...` URL (or `null` if that output
+does not exist yet).
+
+#### Response (200 OK)
+
+```json
+{
+  "final_mp3": "/api/media/episode.example/ep03/ep03.mp3",
+  "chapters_json": "/api/media/episode.example/ep03/chapters.json",
+  "receipt": "/api/media/episode.example/ep03/receipt.json",
+  "parts": [
+    {
+      "part": "example-part-1",
+      "edited_wav": "/api/media/episode.example/parts/example-part-1/example-part-1.edited.wav",
+      "clips": [
+        {
+          "mp3": "/api/media/episode.example/parts/example-part-1/clips/1.mp3",
+          "srt": "/api/media/episode.example/parts/example-part-1/clips/1.srt"
+        }
+      ]
+    }
+  ]
+}
+```
+
+#### Error Responses
+- `404 Not Found`: Episode not found.
+- `422 Unprocessable Entity`: Manifest invalid.
 
 ---
 
@@ -496,6 +637,79 @@ Returns the `transcript.json` for the given part under `out/{id}/parts/{part}/tr
 
 #### Error Responses
 - `404 Not Found`: Transcript not found.
+
+---
+
+### `GET /api/episodes/{id}/parts/{part}/peaks`
+
+Min/max waveform samples for the part, bucketed for a scrollable/zoomable waveform view. Decodes
+`{part}.clean.wav` (or, before the pipeline has run, the original source file) to raw mono `s16le`
+PCM via ffmpeg and reduces it to exactly `buckets` `[min, max]` pairs with numpy.
+
+Cached to `out/{id}/parts/{part}/peaks.<buckets>.json`, keyed on the decoded wav's sha256; a repeat
+request with the same `buckets` and an unchanged wav is served straight from that cache file (it is
+not rewritten).
+
+#### Query Parameters
+- `buckets` *(integer, optional, default: 2000)*: number of `[min, max]` pairs to return.
+
+#### Response (200 OK)
+
+```json
+{
+  "wav_sha256": "9f2c...",
+  "buckets": 2000,
+  "peaks": [[-120, 118], [-340, 355], "... exactly `buckets` entries ..."]
+}
+```
+
+#### Error Responses
+- `404 Not Found`: Episode/part not found, or no clean or source audio exists yet for the part.
+- `422 Unprocessable Entity`: `buckets` is not a positive integer.
+
+---
+
+## Clips
+
+### `GET /api/episodes/{id}/parts/{part}/clips`
+
+Returns `clips.json` (candidate clip windows scored for social cuts) if it has been generated for
+this part, under `out/{id}/parts/{part}/clips.json`.
+
+#### Response (200 OK)
+
+See `clips.json`'s schema (`podcast-autopilot.clips/v1`): `source`, `transcript`, `profile.keywords`,
+and `candidates[]` (each with `id`, `start`, `end`, `text`, `score`, `score_components`, optional `rerank`).
+
+#### Error Responses
+- `404 Not Found`: `clips.json` not found; run clips first.
+
+---
+
+### `POST /api/episodes/{id}/parts/{part}/clips`
+
+Enqueues a background job (on the same job queue/SSE stream as `POST /api/episodes/{id}/run`) that
+scores clip candidates from the part's transcript (`transcribe_mod` + `clips_mod.build_candidates` /
+`rerank_with_llm`) and writes `out/{id}/parts/{part}/clips.json`. Requires `transcript.json` to
+already exist (run the pipeline through the `transcribe` stage first).
+
+#### Request Body
+
+```json
+{ "render": false }
+```
+
+- `render` *(boolean, optional, default: false)*: also cut each candidate to
+  `out/{id}/parts/{part}/clips/<n>.mp3` + `.srt`.
+
+#### Response (200 OK)
+
+Same job shape as `POST /api/episodes/{id}/run` (see [Jobs & Real-time Progress](#jobs--real-time-progress)),
+with `kind: "clips"` and `part_id` set. Progress is reported via `GET /api/jobs/{id}/events` with
+stages `"clips"` and (when `render` is true) `"render"`.
+
+#### Error Responses
+- `404 Not Found`: episode/part not found, or `transcript.json` does not exist yet.
 
 ---
 

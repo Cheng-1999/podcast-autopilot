@@ -5,23 +5,31 @@ business logic."""
 from __future__ import annotations
 
 import json
+import re
 import shutil
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
+import yaml
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
+from .. import assemble as assemble_mod
 from .. import audit as audit_mod
 from .. import cli as cli_mod
+from .. import ffmpeg as ffmpeg_mod
 from .. import plan as plan_mod
+from .. import probe as probe_mod
 from .. import run as run_mod
 from ..config import DEFAULT_MODELS_DIR, FFmpegNotFoundError, load_config, resolve_ffmpeg_binaries
 from . import episodes as episodes_mod
 from . import media as media_mod
 from .jobs import Job, JobManager
+
+ALLOWED_UPLOAD_EXTENSIONS = {".wav", ".mp3", ".flac", ".m4a"}
 
 router = APIRouter(prefix="/api")
 
@@ -50,6 +58,44 @@ def _part_dir_or_404(project_root: Path, episode_id: str, ref: episodes_mod.Mani
         raise HTTPException(404, f"part not found: {part_id}")
     _episode_root, _report_path, parts_dir = episodes_mod.episode_paths(project_root, episode_id)
     return parts_dir / part_id
+
+
+def _slugify(text: str) -> str:
+    text = text.strip().lower()
+    text = re.sub(r"[^\w]+", "-", text, flags=re.UNICODE)
+    text = re.sub(r"-+", "-", text).strip("-")
+    return text or "episode"
+
+
+def _safe_segment(value: str) -> str:
+    name = Path(value).name
+    return name if name not in ("", ".", "..") else "_uploads"
+
+
+def _validate_chapters_against_parts(manifest: assemble_mod.EpisodeManifest, base_dir: Path, config) -> None:
+    if not manifest.parts:
+        raise HTTPException(422, "manifest has no parts")
+    total = 0.0
+    for p in manifest.parts:
+        part_path = assemble_mod._resolve(p, base_dir)
+        if not part_path.is_file():
+            raise HTTPException(422, f"part not found: {part_path}")
+        total += probe_mod.probe_audio(part_path, config)["duration"]
+    try:
+        starts = assemble_mod._chapter_starts(manifest.chapters)
+    except assemble_mod.AssembleError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    for chapter, start in zip(manifest.chapters, starts):
+        if start >= total:
+            raise HTTPException(
+                422,
+                f"chapter {chapter.title!r} starts at {chapter.start!r} ({start:.3f}s) "
+                f"but the part(s) total only {total:.3f}s",
+            )
+
+
+def _dump_manifest_yaml(manifest: assemble_mod.EpisodeManifest) -> str:
+    return yaml.safe_dump(manifest.model_dump(mode="json", exclude_none=True), allow_unicode=True, sort_keys=False)
 
 
 # --- health ------------------------------------------------------------------
@@ -84,6 +130,66 @@ def health() -> dict:
     }
 
 
+# --- uploads ------------------------------------------------------------------
+
+
+@router.post("/uploads")
+async def create_upload(request: Request) -> dict:
+    project_root = _project_root(request)
+    config = load_config(None)
+    content_type = request.headers.get("content-type", "")
+
+    if content_type.startswith("multipart/form-data"):
+        form = await request.form()
+        upload = form.get("file")
+        if upload is None:
+            raise HTTPException(422, "missing 'file' field")
+        original_name = Path(upload.filename or "").name
+        if not original_name:
+            raise HTTPException(422, "missing filename")
+        ext = Path(original_name).suffix.lower()
+        if ext not in ALLOWED_UPLOAD_EXTENSIONS:
+            raise HTTPException(415, f"unsupported audio extension: {ext or '(none)'}")
+
+        episode_segment = _safe_segment(str(form.get("episode") or "_uploads"))
+        dest_dir = project_root / "media" / episode_segment
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest_path = dest_dir / original_name
+        dest_path.write_bytes(await upload.read())
+
+        try:
+            info = probe_mod.probe_audio(dest_path, config)
+        except Exception as exc:
+            dest_path.unlink(missing_ok=True)
+            raise HTTPException(415, f"uploaded file failed to probe as audio: {exc}") from exc
+        return {
+            "path": str(dest_path.resolve()),
+            "duration": info["duration"],
+            "sr": info["sr"],
+            "channels": info["channels"],
+        }
+
+    body = await request.json()
+    path_str = body.get("path") if isinstance(body, dict) else None
+    if not path_str:
+        raise HTTPException(422, "missing 'path'")
+    candidate = Path(path_str)
+    if not candidate.is_absolute():
+        raise HTTPException(422, "'path' must be an absolute path")
+    if not candidate.is_file():
+        raise HTTPException(404, f"file not found: {candidate}")
+    try:
+        info = probe_mod.probe_audio(candidate, config)
+    except Exception as exc:
+        raise HTTPException(415, f"file failed to probe as audio: {exc}") from exc
+    return {
+        "path": str(candidate.resolve()),
+        "duration": info["duration"],
+        "sr": info["sr"],
+        "channels": info["channels"],
+    }
+
+
 # --- episodes ------------------------------------------------------------------
 
 
@@ -93,6 +199,48 @@ def list_episodes(request: Request) -> list[dict]:
     job_manager = _job_manager(request)
     refs = episodes_mod.discover_manifests(project_root)
     return [episodes_mod.episode_summary(project_root, ref, job_manager) for ref in refs]
+
+
+class EpisodeUpdate(BaseModel):
+    chapters: list[assemble_mod.ChapterEntry] = Field(default_factory=list)
+    tags: assemble_mod.TagsConfig = Field(default_factory=assemble_mod.TagsConfig)
+
+
+@router.post("/episodes")
+def create_episode(body: assemble_mod.EpisodeManifest, request: Request) -> dict:
+    project_root = _project_root(request)
+    episodes_dir = project_root / "episodes"
+    slug = f"{_slugify(body.title)}-ep{body.episode:02d}"
+
+    if episodes_mod.find_manifest(project_root, slug) is not None:
+        raise HTTPException(409, f"episode already exists: {slug}")
+
+    config = load_config(None)
+    _validate_chapters_against_parts(body, episodes_dir, config)
+
+    episodes_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = episodes_dir / f"{slug}.yaml"
+    manifest_path.write_text(_dump_manifest_yaml(body), encoding="utf-8")
+    return {"id": slug, "path": str(manifest_path.relative_to(project_root))}
+
+
+@router.put("/episodes/{episode_id}")
+def update_episode(episode_id: str, body: EpisodeUpdate, request: Request) -> dict:
+    project_root = _project_root(request)
+    ref = _ref_or_404(project_root, episode_id)
+    if ref.example:
+        raise HTTPException(400, "cannot edit a bundled example manifest")
+    manifest, error = episodes_mod.load_manifest_safe(ref.path)
+    if manifest is None:
+        raise HTTPException(422, f"manifest invalid: {error}")
+
+    base_dir = ref.path.resolve().parent
+    config = load_config(None)
+    updated = manifest.model_copy(update={"chapters": body.chapters, "tags": body.tags})
+    _validate_chapters_against_parts(updated, base_dir, config)
+
+    ref.path.write_text(_dump_manifest_yaml(updated), encoding="utf-8")
+    return {"id": episode_id, "path": str(ref.path.relative_to(project_root))}
 
 
 @router.get("/episodes/{episode_id}")
@@ -250,6 +398,150 @@ def get_transcript(episode_id: str, part_id: str, request: Request) -> dict:
     if not transcript_path.is_file():
         raise HTTPException(404, "transcript.json not found; run the pipeline first")
     return json.loads(transcript_path.read_text(encoding="utf-8"))
+
+
+def _part_wav_for_peaks(ref: episodes_mod.ManifestRef, part_dir: Path, part_id: str) -> Optional[Path]:
+    wav = part_dir / f"{part_id}.clean.wav"
+    if wav.is_file():
+        return wav
+    manifest, _error = episodes_mod.load_manifest_safe(ref.path)
+    if manifest is None:
+        return None
+    base_dir = ref.path.resolve().parent
+    source = next(
+        (p for p in manifest.parts if assemble_mod._resolve(p, base_dir).stem == part_id), None
+    )
+    if source is None:
+        return None
+    source_path = assemble_mod._resolve(source, base_dir)
+    return source_path if source_path.is_file() else None
+
+
+def _compute_peaks(pcm_bytes: bytes, buckets: int) -> list[list[int]]:
+    if not pcm_bytes:
+        return [[0, 0] for _ in range(buckets)]
+    arr = np.frombuffer(pcm_bytes, dtype="<i2")
+    if arr.size == 0:
+        return [[0, 0] for _ in range(buckets)]
+    peaks: list[list[int]] = []
+    for chunk in np.array_split(arr, buckets):
+        if chunk.size == 0:
+            peaks.append([0, 0])
+        else:
+            peaks.append([int(chunk.min()), int(chunk.max())])
+    return peaks
+
+
+@router.get("/episodes/{episode_id}/parts/{part_id}/peaks")
+def get_peaks(episode_id: str, part_id: str, request: Request, buckets: int = 2000) -> dict:
+    if buckets <= 0:
+        raise HTTPException(422, "buckets must be a positive integer")
+    project_root = _project_root(request)
+    ref = _ref_or_404(project_root, episode_id)
+    part_dir = _part_dir_or_404(project_root, episode_id, ref, part_id)
+
+    wav = _part_wav_for_peaks(ref, part_dir, part_id)
+    if wav is None:
+        raise HTTPException(404, "no audio found for part; expected clean audio or the source file")
+
+    config = load_config(None)
+    wav_sha = audit_mod.sha256_of_file(wav)
+    cache_path = part_dir / f"peaks.{buckets}.json"
+    if cache_path.is_file():
+        try:
+            cached = json.loads(cache_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            cached = None
+        if cached and cached.get("wav_sha256") == wav_sha and cached.get("buckets") == buckets:
+            return cached
+
+    pcm = ffmpeg_mod.decode_pcm_s16le_mono(wav, config)
+    peaks = _compute_peaks(pcm, buckets)
+    data = {"wav_sha256": wav_sha, "buckets": buckets, "peaks": peaks}
+    part_dir.mkdir(parents=True, exist_ok=True)
+    cache_path.write_text(json.dumps(data), encoding="utf-8")
+    return data
+
+
+# --- clips ------------------------------------------------------------------
+
+
+@router.get("/episodes/{episode_id}/parts/{part_id}/clips")
+def get_clips(episode_id: str, part_id: str, request: Request) -> dict:
+    project_root = _project_root(request)
+    ref = _ref_or_404(project_root, episode_id)
+    part_dir = _part_dir_or_404(project_root, episode_id, ref, part_id)
+    clips_path = part_dir / "clips.json"
+    if not clips_path.is_file():
+        raise HTTPException(404, "clips.json not found; run clips first")
+    return json.loads(clips_path.read_text(encoding="utf-8"))
+
+
+class ClipsRequest(BaseModel):
+    render: bool = False
+
+
+@router.post("/episodes/{episode_id}/parts/{part_id}/clips")
+def post_clips(episode_id: str, part_id: str, body: ClipsRequest, request: Request) -> dict:
+    project_root = _project_root(request)
+    job_manager = _job_manager(request)
+    ref = _ref_or_404(project_root, episode_id)
+    part_dir = _part_dir_or_404(project_root, episode_id, ref, part_id)
+
+    transcript_path = part_dir / "transcript.json"
+    if not transcript_path.is_file():
+        raise HTTPException(404, "transcript.json not found; run the pipeline first")
+
+    config = load_config(None)
+    job = job_manager.submit_clips(
+        episode_id=episode_id,
+        part_id=part_id,
+        part_dir=part_dir,
+        config=config,
+        out_dir=project_root / "out",
+        render=body.render,
+    )
+    return job.to_dict()
+
+
+# --- deliverables ------------------------------------------------------------------
+
+
+@router.get("/episodes/{episode_id}/deliverables")
+def get_deliverables(episode_id: str, request: Request) -> dict:
+    project_root = _project_root(request)
+    ref = _ref_or_404(project_root, episode_id)
+    manifest, error = episodes_mod.load_manifest_safe(ref.path)
+    if manifest is None:
+        raise HTTPException(422, f"manifest invalid: {error}")
+
+    episode_root, _report_path, parts_dir = episodes_mod.episode_paths(project_root, episode_id)
+    stem = f"ep{manifest.episode:02d}"
+    ep_dir = episode_root / stem
+    base_dir = ref.path.resolve().parent
+
+    def url(path: Path) -> Optional[str]:
+        return media_mod.to_media_url(project_root, path) if path.is_file() else None
+
+    parts_out = []
+    for part_str in manifest.parts:
+        part_stem = assemble_mod._resolve(part_str, base_dir).stem
+        part_dir = parts_dir / part_stem
+        edited = part_dir / f"{part_stem}.edited.wav"
+        clips_dir = part_dir / "clips"
+        clip_files = []
+        if clips_dir.is_dir():
+            for mp3 in sorted(clips_dir.glob("*.mp3")):
+                srt = mp3.with_suffix(".srt")
+                clip_files.append({"mp3": url(mp3), "srt": url(srt)})
+        parts_out.append({"part": part_stem, "edited_wav": url(edited), "clips": clip_files})
+
+    return {
+        "final_mp3": url(ep_dir / f"{stem}.mp3"),
+        "chapters_json": url(ep_dir / "chapters.json"),
+        "receipt": url(ep_dir / "receipt.json"),
+        "parts": parts_out,
+    }
 
 
 # --- media ------------------------------------------------------------------

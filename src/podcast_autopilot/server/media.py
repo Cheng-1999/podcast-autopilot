@@ -28,6 +28,26 @@ def resolve_media_path(project_root: Path, episode_id: str, rel_path: str) -> Op
     return None
 
 
+def to_media_url(project_root: Path, path: Path) -> Optional[str]:
+    """Inverse of `resolve_media_path`: an absolute filesystem path under
+    out/<episode>/ or media/<episode>/ becomes a /api/media/<episode>/<rel> URL."""
+    try:
+        resolved = Path(path).resolve()
+    except OSError:
+        return None
+    for base_name in ("out", "media"):
+        base = (project_root / base_name).resolve()
+        try:
+            rel_parts = resolved.relative_to(base).parts
+        except ValueError:
+            continue
+        if len(rel_parts) < 2:
+            continue
+        episode_id, remainder = rel_parts[0], rel_parts[1:]
+        return f"/api/media/{episode_id}/{'/'.join(remainder)}"
+    return None
+
+
 def parse_range_header(range_header: Optional[str], file_size: int) -> Optional[tuple[int, int]]:
     """Parse a single-range `Range: bytes=start-end` header. Returns None if
     absent, malformed, multi-range, or unsatisfiable."""

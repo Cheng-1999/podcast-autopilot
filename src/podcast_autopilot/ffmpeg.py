@@ -80,6 +80,20 @@ def measure_mean_volume(path: Path, start: float, duration: float, config: AppCo
     return float(match.group(1))
 
 
+def decode_pcm_s16le_mono(path: Path, config: AppConfig | None = None) -> bytes:
+    """Decode `path` to raw little-endian 16-bit mono PCM, native sample rate."""
+    ffmpeg, _ = resolve_ffmpeg_binaries(config)
+    cmd = [
+        str(ffmpeg), "-hide_banner", "-nostats",
+        "-i", str(path), "-ac", "1",
+        "-f", "s16le", "-acodec", "pcm_s16le", "-",
+    ]
+    result = subprocess.run(cmd, capture_output=True)
+    if result.returncode != 0:
+        raise FFmpegError(f"pcm decode failed for {path}: {result.stderr.decode(errors='replace')}")
+    return result.stdout
+
+
 def ffmpeg_version(config: AppConfig | None = None) -> str:
     ffmpeg, _ = resolve_ffmpeg_binaries(config)
     result = subprocess.run([str(ffmpeg), "-version"], capture_output=True, text=True)

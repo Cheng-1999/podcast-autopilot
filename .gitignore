@@ -16,3 +16,5 @@ __pycache__/
 graphify-out/
 episodes/
 media/
+web/dist/
+web/node_modules/

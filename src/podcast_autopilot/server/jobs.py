@@ -15,7 +15,11 @@ from pathlib import Path
 from typing import Optional
 
 from .. import assemble as assemble_mod
+from .. import audit as audit_mod
+from .. import clips as clips_mod
+from .. import probe as probe_mod
 from .. import run as run_mod
+from .. import transcribe as transcribe_mod
 from .. import voice_chain as voice_chain_mod
 from ..config import AppConfig
 
@@ -70,25 +74,33 @@ class Job:
         self,
         job_id: str,
         episode_id: str,
-        episode_yaml: Path,
-        config: AppConfig,
-        profile: str,
-        profile_config_path: Optional[Path],
-        model: str,
-        out_dir: Path,
-        skip: list[str],
-        force: bool,
+        kind: str = "run",
+        episode_yaml: Optional[Path] = None,
+        config: Optional[AppConfig] = None,
+        profile: str = "",
+        profile_config_path: Optional[Path] = None,
+        model: str = "",
+        out_dir: Path = Path("out"),
+        skip: Optional[list[str]] = None,
+        force: bool = False,
+        part_id: Optional[str] = None,
+        part_dir: Optional[Path] = None,
+        render: bool = False,
     ):
         self.id = job_id
         self.episode_id = episode_id
+        self.kind = kind
         self.episode_yaml = episode_yaml
         self.config = config
         self.profile = profile
         self.profile_config_path = profile_config_path
         self.model = model
         self.out_dir = out_dir
-        self.skip = skip
+        self.skip = skip or []
         self.force = force
+        self.part_id = part_id
+        self.part_dir = Path(part_dir) if part_dir is not None else None
+        self.render = render
 
         self.status = "queued"  # queued|running|done|failed|cancelled
         self.error: Optional[str] = None
@@ -125,10 +137,13 @@ class Job:
         return {
             "id": self.id,
             "episode_id": self.episode_id,
+            "kind": self.kind,
+            "part_id": self.part_id,
             "profile": self.profile,
             "model": self.model,
             "force": self.force,
             "skip": self.skip,
+            "render": self.render,
             "status": self.status,
             "error": self.error,
             "created_at": self.created_at,
@@ -162,7 +177,29 @@ class JobManager:
         force: bool,
     ) -> Job:
         job_id = uuid.uuid4().hex[:12]
-        job = Job(job_id, episode_id, episode_yaml, config, profile, profile_config_path, model, out_dir, skip, force)
+        job = Job(
+            job_id, episode_id, kind="run", episode_yaml=episode_yaml, config=config, profile=profile,
+            profile_config_path=profile_config_path, model=model, out_dir=out_dir, skip=skip, force=force,
+        )
+        with self._lock:
+            self._jobs[job_id] = job
+        self._queue.put(job_id)
+        return job
+
+    def submit_clips(
+        self,
+        episode_id: str,
+        part_id: str,
+        part_dir: Path,
+        config: AppConfig,
+        out_dir: Path,
+        render: bool,
+    ) -> Job:
+        job_id = uuid.uuid4().hex[:12]
+        job = Job(
+            job_id, episode_id, kind="clips", config=config, out_dir=out_dir,
+            part_id=part_id, part_dir=part_dir, render=render,
+        )
         with self._lock:
             self._jobs[job_id] = job
         self._queue.put(job_id)
@@ -215,19 +252,22 @@ class JobManager:
             with open(job.log_path, "w", encoding="utf-8") as logf:
                 tee_out, tee_err = _TeeWriter(logf, job), _TeeWriter(logf, job)
                 with redirect_stdout(tee_out), redirect_stderr(tee_err):
-                    report = run_mod.run_episode(
-                        job.episode_yaml,
-                        job.config,
-                        profile_name=job.profile,
-                        profile_config_path=job.profile_config_path,
-                        model_size=job.model,
-                        out_dir=job.out_dir,
-                        skip=job.skip,
-                        force=job.force,
-                        progress=on_progress,
-                        should_cancel=lambda: job.cancel_requested,
-                    )
-            run_mod.write_run_report(report, report.episode_root / "RUN_REPORT.md")
+                    if job.kind == "clips":
+                        _run_clips_job(job)
+                    else:
+                        report = run_mod.run_episode(
+                            job.episode_yaml,
+                            job.config,
+                            profile_name=job.profile,
+                            profile_config_path=job.profile_config_path,
+                            model_size=job.model,
+                            out_dir=job.out_dir,
+                            skip=job.skip,
+                            force=job.force,
+                            progress=on_progress,
+                            should_cancel=lambda: job.cancel_requested,
+                        )
+                        run_mod.write_run_report(report, report.episode_root / "RUN_REPORT.md")
         except run_mod.CancelledError:
             job.status = "cancelled"
             job.add_event("job_cancelled")
@@ -244,3 +284,41 @@ class JobManager:
             job.add_event("job_finished")
         finally:
             job.finished_at = time.time()
+
+
+def _run_clips_job(job: Job) -> None:
+    """Build (and optionally render) clip candidates for job.part_id, reusing
+    the transcript and clean audio already produced by a prior `run` job."""
+    part_dir = job.part_dir
+    transcript_path = part_dir / "transcript.json"
+    if not transcript_path.is_file():
+        raise run_mod.RunError(f"transcript not found: {transcript_path}; run the pipeline first")
+    audio_path = part_dir / f"{job.part_id}.clean.wav"
+    if not audio_path.is_file():
+        raise run_mod.RunError(f"clean audio not found: {audio_path}; run the pipeline first")
+
+    job.add_event("started", stage="clips", part=job.part_id)
+    t0 = time.monotonic()
+    data = transcribe_mod.load_transcript(transcript_path)
+    candidates = clips_mod.build_candidates(data, job.config)
+    candidates = clips_mod.rerank_with_llm(candidates, job.config)
+    source_info = probe_mod.probe_audio(audio_path, job.config)
+    clips_path = part_dir / "clips.json"
+    clips_mod.write_clips_json(
+        candidates,
+        source={"path": str(audio_path), "sha256": audit_mod.sha256_of_file(audio_path), "duration": source_info["duration"]},
+        transcript_record={"path": str(transcript_path), "sha256": audit_mod.sha256_of_file(transcript_path)},
+        keywords=(job.config.clips.keywords if job.config and job.config.clips else []),
+        out_path=clips_path,
+    )
+    job.add_event("finished", stage="clips", part=job.part_id, elapsed=time.monotonic() - t0)
+
+    if job.render:
+        job.add_event("started", stage="render", part=job.part_id)
+        t1 = time.monotonic()
+        clips_dir = part_dir / "clips"
+        clips_dir.mkdir(parents=True, exist_ok=True)
+        for idx, c in enumerate(candidates, start=1):
+            clips_mod.render_clip(audio_path, c["start"], c["end"], clips_dir / f"{idx}.mp3", job.config)
+            clips_mod.write_clip_srt(data["segments"], c["start"], c["end"], clips_dir / f"{idx}.srt")
+        job.add_event("finished", stage="render", part=job.part_id, elapsed=time.monotonic() - t1)
