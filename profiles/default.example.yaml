@@ -10,3 +10,15 @@ ffmpeg_path: null
 
 loudness_target_i: -16.0
 loudness_target_tp: -1.5
+
+# Silence tightening (used by `plan-pauses`).
+pauses:
+  noise: "-35dB"
+  min_duration: 0.6
+  max_keep: 1.5
+  target: 0.6
+  guard: 0.15
+  min_segment: 0.5
+  head: 0.3
+  tail: 1.0
+  max_removed_fraction: 0.25

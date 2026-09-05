@@ -38,10 +38,18 @@ def apply_plan(plan: EditPlan, audio_path: Path, out_dir: Path, config: AppConfi
     target_dir.mkdir(parents=True, exist_ok=True)
     output_path = target_dir / f"{stem}.edited.wav"
 
-    keep_items = sorted(
-        (item for item in plan.items if item.enabled and item.kind == "keep"),
-        key=lambda it: it.start,
-    )
+    cuts = sorted((item for item in plan.items if item.enabled and item.kind == "cut"), key=lambda it: it.start)
+    if cuts:
+        keep_items = []
+        cursor = 0.0
+        for cut in cuts:
+            if cut.start > cursor:
+                keep_items.append(PlanItem(id=f"derived-{len(keep_items)}", kind="keep", start=cursor, end=cut.start))
+            cursor = cut.end
+        if cursor < plan.source.duration:
+            keep_items.append(PlanItem(id=f"derived-{len(keep_items)}", kind="keep", start=cursor, end=plan.source.duration))
+    else:
+        keep_items = sorted((item for item in plan.items if item.enabled and item.kind == "keep"), key=lambda it: it.start)
     if not keep_items:
         raise ValueError("plan has no enabled 'keep' items to render")
 

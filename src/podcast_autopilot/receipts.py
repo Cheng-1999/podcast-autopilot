@@ -41,6 +41,10 @@ def write_receipt(
             "path": str(output_path),
             "sha256": sha256_of_file(output_path),
         },
+        "edit": {
+            "seconds_removed": sum(item.end - item.start for item in plan.items if item.enabled and item.kind == "cut"),
+            "predicted_duration": plan.predicted_duration,
+        },
         "ffmpeg_version": ffmpeg_version(config),
         "loudness": {
             "input_i": float(loudness.get("input_i", "nan")),

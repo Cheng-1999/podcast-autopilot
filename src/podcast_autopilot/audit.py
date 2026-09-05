@@ -84,6 +84,14 @@ def audit_plan(plan: EditPlan, audio_path: Path) -> AuditResult:
     enabled_items = [item for item in plan.items if item.enabled]
     total_keep = sum(it.end - it.start for it in enabled_items if it.kind == "keep")
     total_cut = sum(it.end - it.start for it in enabled_items if it.kind == "cut")
+    max_fraction = plan.profile.max_removed_fraction
+    if not math.isfinite(max_fraction) or max_fraction < 0 or max_fraction > 1:
+        return AuditResult(ok=False, errors=[f"profile max_removed_fraction is invalid: {max_fraction}"])
+    if duration <= 0 or (total_cut > 0 and total_cut / duration >= max_fraction):
+        return AuditResult(
+            ok=False,
+            errors=[f"enabled cuts remove {total_cut / duration:.1%} of source; limit is < {max_fraction:.1%}"],
+        )
     coverage_ratio = total_keep / duration if duration > 0 else 0.0
 
     return AuditResult(

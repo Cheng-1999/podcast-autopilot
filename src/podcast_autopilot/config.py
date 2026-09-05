@@ -2,13 +2,19 @@ from __future__ import annotations
 
 import os
 import shutil
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_TOOLS_BIN = PROJECT_ROOT / "tools" / "ffmpeg" / "bin"
+DEFAULT_MODELS_DIR = PROJECT_ROOT / "tools" / "models"
+
+# Isolated filler tokens; multi-character entries only match if faster-whisper's
+# word-level alignment happens to emit them as a single word (CJK word
+# boundaries are not guaranteed, see README).
+DEFAULT_FILLER_WORDS: tuple[str, ...] = ("嗯", "呃", "啊", "那個", "就是說", "然後")
 
 
 class FFmpegNotFoundError(RuntimeError):
@@ -21,17 +27,55 @@ class AppConfig:
     loudness_target_i: float = -16.0
     loudness_target_tp: float = -1.5
     profile_name: str = "default"
+    pauses: "PauseConfig" = None  # type: ignore[assignment]
+    whisper_model_size: str = "small"
+    filler_words: list[str] = field(default_factory=lambda: list(DEFAULT_FILLER_WORDS))
+    filler_pause_threshold_s: float = 0.2
+    filler_min_probability: float = 0.5
+
+    def __post_init__(self) -> None:
+        if self.pauses is None:
+            self.pauses = PauseConfig()
+
+
+@dataclass
+class PauseConfig:
+    noise: str = "-35dB"
+    min_duration: float = 0.6
+    max_keep: float = 1.5
+    target: float = 0.6
+    guard: float = 0.15
+    min_segment: float = 0.5
+    head: float = 0.3
+    tail: float = 1.0
+    max_removed_fraction: float = 0.25
 
 
 def load_config(config_path: Path | None = None) -> AppConfig:
     if config_path is None or not config_path.is_file():
         return AppConfig()
     data = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    pauses = data.get("pauses") or {}
     return AppConfig(
         ffmpeg_path=data.get("ffmpeg_path"),
         loudness_target_i=float(data.get("loudness_target_i", -16.0)),
         loudness_target_tp=float(data.get("loudness_target_tp", -1.5)),
         profile_name=str(data.get("name", "default")),
+        whisper_model_size=str(data.get("whisper_model_size", "small")),
+        filler_words=list(data.get("filler_words", DEFAULT_FILLER_WORDS)),
+        filler_pause_threshold_s=float(data.get("filler_pause_threshold_s", 0.2)),
+        filler_min_probability=float(data.get("filler_min_probability", 0.5)),
+        pauses=PauseConfig(
+            noise=str(pauses.get("noise", "-35dB")),
+            min_duration=float(pauses.get("min_duration", pauses.get("d", 0.6))),
+            max_keep=float(pauses.get("max_keep", 1.5)),
+            target=float(pauses.get("target", 0.6)),
+            guard=float(pauses.get("guard", 0.15)),
+            min_segment=float(pauses.get("min_segment", 0.5)),
+            head=float(pauses.get("head", 0.3)),
+            tail=float(pauses.get("tail", 1.0)),
+            max_removed_fraction=float(pauses.get("max_removed_fraction", 0.25)),
+        ),
     )
 
 
