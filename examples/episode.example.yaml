@@ -32,10 +32,12 @@ bgm: null
 #     release: 300
 
 # Chapter markers on the final assembled timeline ("mm:ss" or "hh:mm:ss").
+# Every start must fall inside the assembled episode; the placeholder parts
+# are 20 s each, so "00:20" is where the second part begins.
 chapters:
   - start: "00:00"
     title: "Intro"
-  - start: "05:00"
+  - start: "00:20"
     title: "Main topic"
 
 tags:

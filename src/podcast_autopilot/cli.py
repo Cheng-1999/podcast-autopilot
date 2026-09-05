@@ -323,6 +323,9 @@ def run(
 
 
 EXAMPLE_PART_NAMES = ["example-part-1.wav", "example-part-2.wav"]
+# Seconds per placeholder part; examples/episode.example.yaml's chapters must fit
+# inside len(EXAMPLE_PART_NAMES) * EXAMPLE_PART_DURATION_S (tests/test_run.py).
+EXAMPLE_PART_DURATION_S = 20.0
 
 
 @app.command("make-example")
@@ -342,7 +345,7 @@ def make_example(
         path = out_dir / name
         if path.is_file():
             continue
-        generate_synthetic_audio(path, duration=20.0, config=config)
+        generate_synthetic_audio(path, duration=EXAMPLE_PART_DURATION_S, config=config)
         typer.echo(f"generated {path}")
     typer.echo("MAKE-EXAMPLE OK")
 

@@ -311,3 +311,20 @@ def test_run_episode_relative_out_dir_with_manifest_in_subdirectory(tmp_path: Pa
     assert Path(report.assemble_result["output"]).is_file()
     assert (tmp_path / "out" / "episode" / "ep01" / "ep01.mp3").is_file()
     assert not (examples / "out").exists()
+
+
+def test_bundled_example_manifest_chapters_fit_generated_placeholder_parts():
+    """`run.ps1 examples\episode.example.yaml` on a fresh clone assembles the
+    make-example placeholders (EXAMPLE_PART_DURATION_S each); a chapter that
+    starts past their combined length makes assemble fail the one-command run."""
+    from podcast_autopilot import cli
+    from podcast_autopilot.assemble import load_manifest, parse_timecode
+
+    repo_root = Path(__file__).resolve().parents[1]
+    manifest = load_manifest(repo_root / "examples" / "episode.example.yaml")
+    assert manifest.parts == cli.EXAMPLE_PART_NAMES
+    total = len(cli.EXAMPLE_PART_NAMES) * cli.EXAMPLE_PART_DURATION_S
+    for chapter in manifest.chapters:
+        assert parse_timecode(chapter.start) < total, (
+            f"chapter {chapter.title!r} at {chapter.start} is outside the {total:.0f}s placeholder episode"
+        )
