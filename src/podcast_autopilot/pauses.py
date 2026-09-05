@@ -1,6 +1,7 @@
 """Silence detection and non-destructive pause-tightening edit plans."""
 from __future__ import annotations
 
+import math
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,12 +15,42 @@ from .probe import probe_audio
 _TIMESTAMP = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)"
 _START = re.compile(rf"silence_start:\s*({_TIMESTAMP})")
 _END = re.compile(rf"silence_end:\s*({_TIMESTAMP})")
+_RELATIVE_NOISE = re.compile(r"^\s*([-+]?(?:\d+(?:\.\d*)?|\.\d+))\s*LU\s*$", re.IGNORECASE)
+
+# Used for a relative threshold when the file's integrated loudness cannot be
+# measured (digital silence / non-finite): the pre-0.1.0 absolute default.
+ABSOLUTE_NOISE_FALLBACK = "-35dB"
 
 
-def detect_silences(audio_path: Path, config: AppConfig | None = None) -> list[tuple[float, float]]:
+def resolve_noise_threshold(noise: str, integrated_lufs: float | None) -> str:
+    """Turn `pauses.noise` into the absolute dBFS value silencedetect needs.
+
+    `"-35dB"` (or any string without an `LU` suffix) is passed through as an
+    absolute threshold. `"<offset>LU"` is relative to the file's integrated
+    loudness: `"0LU"` on a -16 LUFS cleaned part becomes `-16dB`, on a
+    -35 LUFS raw recording `-35dB`. A fixed dBFS threshold cannot serve both:
+    the same programme sits ~20 dB higher after `clean`, so `-35dB` finds no
+    pause longer than a breath on normalised audio.
+    """
+    match = _RELATIVE_NOISE.match(str(noise))
+    if not match:
+        return str(noise).strip()
+    if integrated_lufs is None or not math.isfinite(integrated_lufs):
+        return ABSOLUTE_NOISE_FALLBACK
+    return f"{integrated_lufs + float(match.group(1)):.2f}dB"
+
+
+def detect_silences(
+    audio_path: Path,
+    config: AppConfig | None = None,
+    integrated_lufs: float | None = None,
+) -> list[tuple[float, float]]:
     config = config or AppConfig()
     pauses = config.pauses or PauseConfig()
-    ffmpeg_args = ["-i", str(audio_path), "-af", f"silencedetect=noise={pauses.noise}:d={pauses.min_duration:g}", "-f", "null", "-"]
+    if integrated_lufs is None and _RELATIVE_NOISE.match(str(pauses.noise)):
+        integrated_lufs = probe_audio(audio_path, config).get("input_i")
+    noise = resolve_noise_threshold(pauses.noise, integrated_lufs)
+    ffmpeg_args = ["-i", str(audio_path), "-af", f"silencedetect=noise={noise}:d={pauses.min_duration:g}", "-f", "null", "-"]
     result = run_ffmpeg(ffmpeg_args, config)
     text = result.stderr
     events = sorted(
@@ -83,10 +114,15 @@ def build_pause_plan(audio_path: Path, config: AppConfig | None = None) -> EditP
     config = config or AppConfig()
     info = probe_audio(audio_path, config)
     p = config.pauses or PauseConfig()
-    cuts = _candidate_cuts(detect_silences(audio_path, config), info["duration"], p)
+    cuts = _candidate_cuts(detect_silences(audio_path, config, integrated_lufs=info.get("input_i")), info["duration"], p)
     items = [PlanItem(id=f"cut-{idx:04d}", kind="cut", start=start, end=end,
                       reason=f"pause {length:.2f}s -> {length - (end-start):.2f}s", enabled=True)
              for idx, (start, end, length, _leading, _trailing) in enumerate(cuts, 1)]
+    if not items:
+        # No pause was long enough to cut: a cut-only plan with zero items has
+        # no complement for apply.py to render (nothing "kept"), so fall back
+        # to an explicit identity keep spanning the whole file.
+        items = [PlanItem(id="keep-0001", kind="keep", start=0.0, end=info["duration"], reason="no cuts found", enabled=True)]
     source = SourceInfo(path=str(audio_path), sha256=sha256_of_file(audio_path), duration=info["duration"],
                         sr=info["sr"], channels=info["channels"])
     profile = ProfileInfo(name=config.profile_name, max_removed_fraction=p.max_removed_fraction)

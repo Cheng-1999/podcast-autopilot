@@ -28,3 +28,18 @@ def test_plan_fillers_rejects_invalid_model_size(tmp_path: Path):
     result = runner.invoke(app, ["plan-fillers", str(audio_path), "--model", "large", "--out-dir", str(tmp_path)])
     assert result.exit_code != 0
     assert "small" in result.output and "medium" in result.output
+
+
+def test_make_example_generates_missing_parts_and_is_idempotent(tmp_path: Path):
+    from podcast_autopilot.cli import EXAMPLE_PART_NAMES
+
+    result = runner.invoke(app, ["make-example", "--out-dir", str(tmp_path)])
+    assert result.exit_code == 0, result.output
+    paths = [tmp_path / name for name in EXAMPLE_PART_NAMES]
+    for path in paths:
+        assert path.is_file()
+    mtimes = [p.stat().st_mtime_ns for p in paths]
+
+    result = runner.invoke(app, ["make-example", "--out-dir", str(tmp_path)])
+    assert result.exit_code == 0, result.output
+    assert [p.stat().st_mtime_ns for p in paths] == mtimes

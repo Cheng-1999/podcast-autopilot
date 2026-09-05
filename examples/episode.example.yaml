@@ -1,13 +1,20 @@
-# Copy this file, point `parts` at your cleaned+pause-applied part WAVs, and
-# run: python -m podcast_autopilot assemble examples/episode.example.yaml
+# Copy this file, point `parts` at your own part WAVs (raw for `run`,
+# cleaned+pause-applied for `assemble`), and run e.g.:
+#   python -m podcast_autopilot run examples/episode.example.yaml
 # Paths below are relative to this file's directory unless absolute.
+#
+# The two `parts` below are placeholders: `example-part-1.wav` and
+# `example-part-2.wav` don't ship with the repo (no audio is committed).
+# `run.ps1` generates them automatically (synthetic tone + white noise, via
+# `python -m podcast_autopilot make-example`) the first time you run this
+# exact file, so the one-command run works right after a fresh clone.
 
 title: "Episode 3"
 episode: 3
 
 parts:
-  - EP3-1.wav
-  - EP3-2.wav
+  - example-part-1.wav
+  - example-part-2.wav
 
 # Optional: crossfaded 1.0s into/out of the joined parts.
 intro: null

@@ -42,8 +42,11 @@ filler_pause_threshold_s: 0.2
 filler_min_probability: 0.5
 
 # Silence tightening (used by `plan-pauses`).
+# `noise` is the silencedetect threshold. "<n>LU" is relative to the file's
+# integrated loudness ("0LU" = -16dB on a -16 LUFS cleaned part, -35dB on a
+# -35 LUFS raw take); an absolute value such as "-35dB" is passed through as is.
 pauses:
-  noise: "-35dB"
+  noise: "0LU"
   min_duration: 0.6
   max_keep: 1.5
   target: 0.6

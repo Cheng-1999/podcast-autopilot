@@ -44,7 +44,7 @@ class AppConfig:
 
 @dataclass
 class PauseConfig:
-    noise: str = "-35dB"
+    noise: str = "0LU"  # relative to integrated loudness; "-35dB" = absolute dBFS
     min_duration: float = 0.6
     max_keep: float = 1.5
     target: float = 0.6
@@ -110,7 +110,7 @@ def load_config(config_path: Path | None = None) -> AppConfig:
             adeclip=bool(voice.get("adeclip", False)),
         ),
         pauses=PauseConfig(
-            noise=str(pauses.get("noise", "-35dB")),
+            noise=str(pauses.get("noise", "0LU")),
             min_duration=float(pauses.get("min_duration", pauses.get("d", 0.6))),
             max_keep=float(pauses.get("max_keep", 1.5)),
             target=float(pauses.get("target", 0.6)),

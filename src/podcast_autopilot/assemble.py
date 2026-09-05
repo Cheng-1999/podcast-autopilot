@@ -405,10 +405,30 @@ def _export_mp3(
 
 
 def assemble_episode(manifest_path: Path, out_dir: Path = Path("out"), config: AppConfig | None = None) -> dict:
-    config = config or AppConfig()
     manifest_path = Path(manifest_path)
     manifest = load_manifest(manifest_path)
     base_dir = manifest_path.resolve().parent
+    return assemble_from_manifest(
+        manifest, base_dir, out_dir, config,
+        manifest_record={"path": str(manifest_path), "sha256": sha256_of_file(manifest_path)},
+    )
+
+
+def assemble_from_manifest(
+    manifest: EpisodeManifest,
+    base_dir: Path,
+    out_dir: Path = Path("out"),
+    config: AppConfig | None = None,
+    manifest_record: dict | None = None,
+) -> dict:
+    """Assemble an already-loaded manifest whose `parts` point at final, edited part audio.
+
+    Used directly by `run` (which builds this manifest from per-part apply
+    outputs) as well as by `assemble_episode` (which loads it from a YAML
+    file on disk).
+    """
+    config = config or AppConfig()
+    base_dir = Path(base_dir)
 
     part_paths = [_resolve(p, base_dir) for p in manifest.parts]
     if not part_paths:
@@ -512,7 +532,7 @@ def assemble_episode(manifest_path: Path, out_dir: Path = Path("out"), config: A
     receipt = {
         "schema": SCHEMA_ID,
         "created": datetime.now(timezone.utc).isoformat(),
-        "manifest": {"path": str(manifest_path), "sha256": sha256_of_file(manifest_path)},
+        "manifest": manifest_record,
         "inputs": input_records,
         "output": {"path": str(output_mp3), "sha256": sha256_of_file(output_mp3)},
         "duration": output_info["duration"],

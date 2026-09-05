@@ -9,3 +9,4 @@ opencc-python-reimplemented==0.1.7
 numpy>=2.0
 scipy>=1.13
 noisereduce==3.0.3
+streamlit==1.58.0

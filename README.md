@@ -2,7 +2,11 @@
 
 CPU-only 的 Podcast 後製自動化工具（Windows，無需 GPU）。核心流程是
 `probe`（量測）→ `plan`（剪輯計畫）→ `audit`（fail-closed 驗證）→ `apply`
-（用 ffmpeg 渲染）→ `receipt`（產出可追溯的收據）。
+（用 ffmpeg 渲染）→ `receipt`（產出可追溯的收據），一個 episode 的多個
+part 全部跑完後再 `assemble` 成一集；`run` 把整條流程串成一個指令（見
+下面「一鍵執行」）。這個 plan/audit/apply/receipt 架構參考自
+[Hao0321/video-autopilot-kit](https://github.com/Hao0321/video-autopilot-kit)，
+沒有複製任何程式碼，細節見 `NOTICE`。
 
 ## 環境需求
 
@@ -58,10 +62,94 @@ python -m venv .venv
   （如「那個」「然後」）能否被抓到，取決於 faster-whisper 對中文字詞邊界
   的切法，不保證每次都切成一個 word。
 - `python -m podcast_autopilot clean <audio> [--profile default|spotify]`：依序執行
-  denoise、highpass、de-ess、compression 與 two-pass loudnorm，輸出
+  denoise、highpass、de-ess、compression，再做響度正規化（先量測輸入、
+  以線性增益推到目標 LUFS，最後用 4 倍超取樣的 look-ahead limiter 壓
+  住 true peak；不用 ffmpeg loudnorm 做正規化，因為它遇到 -35 LUFS
+  又有 0 dBFS 碰麥聲的家用錄音會退回 dynamic 模式而少 3 dB），輸出
   `out/<檔名>/<檔名>.clean.wav` 和含 engine/filtergraph/量測結果的 receipt。
   `denoise.engine` 支援 `auto`、`noisereduce`、`afftdn`、`off`；auto 在
   `noisereduce` 不可用時會記錄警告並使用 `afftdn=nr=12:nf=-25`。
+- `python -m podcast_autopilot assemble <episode.yaml> [--out-dir out]`：把
+  `parts`（清乾淨、已剪輯的 part wav）依序接起來，加上可選的 intro/outro
+  crossfade、sidechain-ducked 的背景音樂、章節標記，輸出打好 ID3 tag 的
+  `out/<episode>/ep<NN>/ep<NN>.mp3` 與 receipt。manifest 結構見
+  `examples/episode.example.yaml`。
+- `python -m podcast_autopilot run <episode.yaml> [--profile default] [--model small|medium] [--skip STAGE ...] [--force] [--dry-run]`：
+  一個指令跑完整條後製線，見下面「一鍵執行」。
+
+## 一鍵執行（`run`）
+
+`run` 對 manifest 裡的每個 part 依序執行
+`probe -> clean -> plan-pauses -> transcribe -> plan-fillers -> audit -> apply`，
+全部 part 都跑完後再 `assemble` 成一集。
+
+```powershell
+python -m podcast_autopilot run examples\episode.example.yaml --profile default
+```
+
+或直接雙擊 / 執行 `run.ps1`（會自動建立 `.venv`、安裝依賴、檢查
+ffmpeg，再呼叫上面的指令）：
+
+```powershell
+.\run.ps1 examples\episode.example.yaml
+.\run.ps1 examples\episode.example.yaml -Profile spotify -ExtraArgs --dry-run
+```
+
+`examples/episode.example.yaml` 指向兩個沒有隨repo提交的佔位音檔
+（`example-part-1.wav`／`example-part-2.wav`，因為本專案不提交任何音檔）；
+`run.ps1` 偵測到你跑的正是這個內建範例時，會先呼叫
+`python -m podcast_autopilot make-example` 產生兩段合成音檔（純音+白噪音），
+所以 clone 下來馬上就能跑，不需要準備真的錄音。要跑自己的錄音，複製這個
+YAML、把 `parts` 指到你自己的檔案即可。
+
+**快取**：每個 part 在 `out/<episode>/parts/<part>/stage_cache.json`
+記錄每個 stage 的來源 sha256、profile sha256 與 stage 版本號（`probe`
+也快取，`transcribe` 的 key 額外含 whisper 模型大小，所以 `--model small`
+之後改跑 `--model medium` 一定會重新轉錄）；重跑時只要這三者都沒變、且
+stage 的輸出檔還在，就直接跳過（狀態顯示為 `cached`）。手動改過 `out/<episode>/parts/<part>/plan.json`（或用下面的
+Streamlit 介面勾選/取消 filler 提案）之後重新執行同一個指令，只有
+`audit`／`apply` 那個 part 會重跑，`assemble` 則視渲染出來的音檔內容是否
+真的變了才決定要不要重跑（見 `RUN_REPORT.md` 底部的重跑指令）；`clean`／
+`plan-pauses`／`transcribe`／`plan-fillers` 這些較貴的 stage 完全不受影響
+（唯一例外：`plan-pauses` 因版本號或來源改變而重跑時，`plan-fillers` 一定
+跟著重跑，因為新的停頓計畫裡沒有先前合併進去的語助詞提案）。
+`--force` 會忽略所有快取、全部重跑。`--dry-run` 只印出每個 stage 會是
+`ran`／`cached`，不會真的執行任何東西。`--skip STAGE` 讓某個 stage 直接
+沿用既有輸出檔（若該檔案還不存在會報錯）。
+
+輸出：`out/<episode>/RUN_REPORT.md`，內容包含每個 stage 的耗時、剪掉的
+秒數、清理前後的響度、轉錄檔路徑、目前停用（`enabled: false`）待人工
+複核的 filler 提案清單，以及一行可以直接複製貼上、在你編輯完
+`plan.json` 之後拿去重跑的指令（會把 `--profile`、`--model`、`--out-dir`、
+實際用到的 `--config` 檔與 `--skip` 全部釘死，確保重跑的是同一份設定與
+同一個輸出目錄）。
+
+## Streamlit 介面
+
+```powershell
+.venv\Scripts\python -m streamlit run app.py
+```
+
+單頁工具（無自訂樣式）：選 `episode.yaml`、按「Run」執行整條 pipeline、
+直接讀取並顯示 `RUN_REPORT.md`、每個 part 的 plan items 列成勾選框
+（勾掉代表 `enabled: false`）、按「Save changes」寫回對應的
+`plan.json`，以及「Apply again」按鈕重跑整條指令（靠上面的快取機制，
+只有真的被改動的 part 會重新 `audit`／`apply`，接著重新 `assemble`）。
+
+## Profile 設定值
+
+`profiles/default.example.yaml`（複製成 `profiles/<name>.yaml` 後可自行修改，
+該檔已加入 `.gitignore`，不會被提交）：
+
+| 欄位 | 用途 |
+|---|---|
+| `ffmpeg_path` | ffmpeg 安裝目錄或 `ffmpeg.exe` 路徑；`null` 表示走 PATH / `tools/ffmpeg/bin` |
+| `loudness_target_i` / `loudness_target_tp` | 整體響度（LUFS）/ 真峰值（dBTP）目標 |
+| `denoise.engine` | `auto`\|`noisereduce`\|`afftdn`\|`off` |
+| `voice_chain.*` | highpass、de-esser、compressor 各項參數 |
+| `whisper_model_size` | `small`\|`medium`（`transcribe`／`plan-fillers`／`run` 的預設模型） |
+| `filler_words` / `filler_pause_threshold_s` / `filler_min_probability` | 語助詞偵測門檻，見上面 `plan-fillers` 說明 |
+| `pauses.*` | 停頓收緊的閾值（`noise`、`min_duration`、`max_keep`、`target`、`guard`、`min_segment`、`head`、`tail`、`max_removed_fraction`）。`noise` 預設 `"0LU"`＝相對於該檔整合響度（-16 LUFS 的 clean 檔即 -16dB、-35 LUFS 的原始檔即 -35dB）；寫 `"-35dB"` 則是絕對 dBFS 門檻。`run` 是在 clean 過的 -16 LUFS 音檔上找停頓，固定 -35dB 在那上面找不到任何超過 `max_keep` 的停頓，所以改成相對值 |
 
 ## Edit-plan 合約
 
@@ -121,6 +209,30 @@ segment 中有 15 個（1.6%，集中在音檔開頭 10 秒內與一段 25–57
 秒的區間）出現 Whisper 常見的低信心幻覺（重複字元或尾綴一個
 全形「１」），這是 `small` 模型在真實錄音上的已知行為，不是程式
 邏輯錯誤；其餘 907 個 segment 文字通順、時間軸正確。
+
+完整 `run`（兩集 part、`probe -> clean -> plan-pauses -> transcribe ->
+plan-fillers -> audit -> apply -> assemble`）的實測時間見
+`docs/RUNS.md`。
+
+## 已知限制
+
+- **CPU-only 時間**：轉錄是整條 pipeline最貴的一步，`small` 模型約
+  1.8–2.2x 即時速度；`medium` 模型準確度較高但更慢，本專案未在這台機器
+  上做過 `medium` 的完整計時。denoise／voice chain／pause 偵測都是
+  ffmpeg 單趟濾鏡，遠比轉錄快。沒有 GPU 加速路徑。
+- **Whisper 幻覺**：如上，`small` 模型在真實錄音上偶爾會在低信心片段
+  重複字元或吐出雜訊字元，需要人工看過 `transcript.md`／`.srt`。
+- **語助詞與停頓提案都需要人工複核**：`plan-pauses` 的停頓收緊與
+  `plan-fillers` 的語助詞提案都只是「提案」（後者預設
+  `enabled: false`），`run` 之後務必看過 `RUN_REPORT.md` 裡列出的
+  停用提案清單，或在 Streamlit 介面裡逐一勾選，不要盲目全部啟用。
+- **多字語助詞抓取不保證**：「那個」「然後」這類多字語助詞能否被抓成
+  一個 word，取決於 faster-whisper 的中文分詞，不是每次都切在同一個
+  邊界上。
+- **BGM／intro／outro 混音沒有自動響度匹配**：`assemble` 的
+  sidechain ducking 用固定的 threshold/ratio/attack/release（見
+  `examples/episode.example.yaml` 的 `bgm.duck`），不同素材可能需要
+  手動調整這幾個參數才會聽起來自然。
 
 ## 測試
 
@@ -186,6 +298,106 @@ requirements.txt && .venv\Scripts\pip install -e . && .venv\Scripts\python
 `config.ffmpeg_path` > `PATH` > `tools/ffmpeg/bin` (gitignored); install
 with `winget install Gyan.FFmpeg` or drop the binaries into
 `tools/ffmpeg/bin` manually.
+
+### One-command run
+
+`python -m podcast_autopilot run <episode.yaml> [--profile default]
+[--model small|medium] [--skip STAGE ...] [--force] [--dry-run]` runs, per
+part in the manifest, `probe -> clean -> plan-pauses -> transcribe ->
+plan-fillers -> audit -> apply`, then `assemble`s all parts into one
+episode. Or just run `.\run.ps1 examples\episode.example.yaml` (creates
+`.venv` if missing, installs requirements, checks ffmpeg, then calls the
+same command; `.\run.ps1 examples\episode.example.yaml -Profile spotify
+-ExtraArgs --dry-run` forwards extra flags).
+
+Each part caches every stage's outputs in
+`out/<episode>/parts/<part>/stage_cache.json`, keyed on the source file's
+sha256, the profile's sha256, and a per-stage version number (`probe` is
+cached too, and `transcribe`'s key also includes the whisper model size, so
+`--model medium` after a `--model small` run never reuses the old
+transcript); a re-run skips a stage (`cached`) only if all three still
+match and its output files still exist. `--force` ignores the cache and reruns everything.
+Whenever `plan-pauses` re-runs, `plan-fillers` re-runs too (a rebuilt
+pause plan no longer holds the earlier filler proposals).
+`--dry-run` prints each stage's would-be status (`ran`/`cached`) without
+doing anything. `--skip STAGE` reuses an existing output file for that
+stage (errors if it does not exist yet).
+
+Output: `out/<episode>/RUN_REPORT.md` with per-stage timings, seconds
+removed, loudness before/after cleaning, the transcript path, the list of
+disabled (`enabled: false`) filler proposals to review, and a
+copy-pasteable command to re-run after you hand-edit a part's `plan.json`
+(it pins `--profile`, `--model`, `--out-dir`, the exact `--config` file used
+and any `--skip`, so it reproduces the same configuration and output
+directory; only `audit`/`apply`, and `assemble` if the rendered audio actually
+changed, re-run — `clean`/`plan-pauses`/`transcribe`/`plan-fillers` stay
+cached).
+
+`examples/episode.example.yaml` points at two placeholder WAVs
+(`example-part-1.wav` / `example-part-2.wav`) that are not committed (no
+audio ships with this repo); `run.ps1` detects when you run that exact
+bundled file and first calls `python -m podcast_autopilot make-example` to
+generate synthetic tone+noise audio for them, so the one-command run works
+right after a fresh clone with no real recording needed. Copy the YAML and
+point `parts` at your own audio to use it for real.
+
+### Streamlit app
+
+`.venv\Scripts\python -m streamlit run app.py` — pick an `episode.yaml`,
+click Run, read the rendered `RUN_REPORT.md`, review every part's plan
+items as checkboxes (unchecked = `enabled: false`), save changes back to
+`plan.json`, and re-run with "Apply again" (same caching as above, so only
+the parts you actually changed re-render).
+
+### Profile keys
+
+Copy `profiles/default.example.yaml` to `profiles/<name>.yaml` (gitignored,
+so edits are never committed):
+
+| Key | Purpose |
+|---|---|
+| `ffmpeg_path` | ffmpeg install dir or `ffmpeg.exe` path; `null` = PATH / `tools/ffmpeg/bin` |
+| `loudness_target_i` / `loudness_target_tp` | integrated loudness (LUFS) / true peak (dBTP) target |
+| `denoise.engine` | `auto`\|`noisereduce`\|`afftdn`\|`off` |
+| `voice_chain.*` | highpass, de-esser, compressor parameters |
+| `whisper_model_size` | `small`\|`medium`, default model for `transcribe`/`plan-fillers`/`run` |
+| `filler_words` / `filler_pause_threshold_s` / `filler_min_probability` | filler-word detection thresholds |
+| `pauses.*` | pause-tightening thresholds (`noise`, `min_duration`, `max_keep`, `target`, `guard`, `min_segment`, `head`, `tail`, `max_removed_fraction`). `noise` defaults to `"0LU"` = relative to the file's integrated loudness (-16dB on a -16 LUFS cleaned part, -35dB on a -35 LUFS raw take); `"-35dB"` is an absolute dBFS threshold. `run` detects pauses on the cleaned -16 LUFS audio, where a fixed -35dB never finds a pause longer than `max_keep` |
+
+### Reviewing plan.json
+
+Every stage that proposes an edit (`plan-pauses`, `plan-fillers`) writes to
+`out/<episode>/parts/<part>/plan.json` rather than rendering directly.
+Pause cuts default to `enabled: true`; filler-word proposals default to
+`enabled: false` since they are lower-confidence. Before trusting the
+final MP3, open `RUN_REPORT.md`'s disabled-proposal table (or the
+Streamlit checkboxes) and flip `enabled` only on the filler cuts you agree
+with, then re-run the printed re-apply command — caching means this only
+re-renders `audit`/`apply`/`assemble` for the part(s) you touched.
+
+### Known limitations
+
+- **CPU-only timing**: transcription is the most expensive stage —
+  `small` runs at roughly 1.8-2.2x real time; `medium` is more accurate
+  but has not been benchmarked end-to-end on this machine. Denoise, the
+  voice chain, and pause detection are single-pass ffmpeg filters, far
+  cheaper than transcription. There is no GPU path.
+- **Whisper hallucination**: the `small` model occasionally repeats
+  characters or emits stray characters on low-confidence segments in real
+  recordings; always spot-check `transcript.md`/`.srt`.
+- **Pause and filler proposals need human review**: `plan-pauses` cuts and
+  `plan-fillers` proposals (the latter `enabled: false` by default) are
+  proposals, not final decisions — always check `RUN_REPORT.md`'s disabled
+  list or the Streamlit checkboxes before treating a `run` as final.
+- **Multi-character filler words are not guaranteed to be caught as one
+  word**: whether "那個"/"然後" tokenize as a single word depends on
+  faster-whisper's Chinese word segmentation.
+- **BGM/intro/outro mixing has no automatic loudness matching**:
+  `assemble`'s sidechain ducking uses fixed threshold/ratio/attack/release
+  values (see `examples/episode.example.yaml`'s `bgm.duck`); different
+  source material may need those tuned by hand to sound natural.
+
+See `docs/RUNS.md` for a real end-to-end `run` timing/quality record.
 
 Architectural reference: Hao0321/video-autopilot-kit (see `NOTICE`).
 License: MIT.

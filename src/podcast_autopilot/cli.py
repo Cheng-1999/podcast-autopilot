@@ -14,6 +14,7 @@ from . import audit as audit_mod
 from . import plan as plan_mod
 from . import probe as probe_mod
 from . import receipts as receipts_mod
+from . import run as run_mod
 from . import transcribe as transcribe_mod
 from . import voice_chain as voice_chain_mod
 from .config import AppConfig, load_config
@@ -114,6 +115,13 @@ def transcribe(
     typer.echo(f"out: {target_dir}")
 
 
+def _resolve_profile_config_path(profile: str) -> Optional[Path]:
+    profile_path = Path("profiles") / f"{profile}.yaml"
+    if not profile_path.is_file():
+        profile_path = Path("profiles") / f"{profile}.example.yaml"
+    return profile_path if profile_path.is_file() else None
+
+
 @app.command()
 def clean(
     audio_path: Path = typer.Argument(..., exists=True, readable=True),
@@ -123,10 +131,7 @@ def clean(
 ) -> None:
     """Denoise, clean, compress, and loudness-normalize an audio file."""
     if config_path is None:
-        profile_path = Path("profiles") / f"{profile}.yaml"
-        if not profile_path.is_file():
-            profile_path = Path("profiles") / f"{profile}.example.yaml"
-        config_path = profile_path if profile_path.is_file() else None
+        config_path = _resolve_profile_config_path(profile)
     config = _load_app_config(config_path)
     try:
         output, receipt = voice_chain_mod.clean_audio(audio_path, out_dir, config)
@@ -272,6 +277,74 @@ def assemble(
         f"lufs={result['loudness']['input_i']:.1f} tp={result['loudness']['input_tp']:.1f}"
     )
     typer.echo(f"receipt: {result['receipt']}")
+
+
+@app.command()
+def run(
+    episode_yaml: Path = typer.Argument(..., exists=True, readable=True),
+    profile: str = typer.Option("default", "--profile"),
+    model: Optional[str] = typer.Option(None, "--model", help="small|medium (default: config.whisper_model_size, else small)"),
+    out_dir: Path = typer.Option(Path("out"), "--out-dir"),
+    skip: list[str] = typer.Option([], "--skip", help=f"Stage(s) to skip: {run_mod.ALL_STAGES}"),
+    force: bool = typer.Option(False, "--force", help="Ignore cached stage outputs and rerun everything"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview which stages would run/be cached; no side effects"),
+    config_path: Optional[Path] = typer.Option(None, "--config"),
+) -> None:
+    """Run the full per-part pipeline (probe->clean->plan-pauses->transcribe->
+    plan-fillers->audit->apply) for every part in an episode manifest, then
+    assemble. Stage outputs are cached; --force reruns everything. Writes
+    <out-dir>/<episode>/RUN_REPORT.md.
+    """
+    _validate_model_size(model)
+    profile_config_path = config_path if config_path is not None else _resolve_profile_config_path(profile)
+    config = _load_app_config(profile_config_path)
+    model_size = model or config.whisper_model_size
+
+    try:
+        report = run_mod.run_episode(
+            episode_yaml,
+            config,
+            profile_name=profile,
+            profile_config_path=profile_config_path,
+            model_size=model_size,
+            out_dir=out_dir,
+            skip=skip,
+            force=force,
+            dry_run=dry_run,
+        )
+    except (run_mod.RunError, assemble_mod.AssembleError, voice_chain_mod.VoiceChainError) as exc:
+        typer.echo(f"RUN FAILED: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    report_path = run_mod.write_run_report(report, report.episode_root / "RUN_REPORT.md")
+    typer.echo(f"RUN {'DRY-RUN ' if dry_run else ''}OK: report={report_path}")
+    if report.assemble_result:
+        typer.echo(f"output: {report.assemble_result['output']}")
+
+
+EXAMPLE_PART_NAMES = ["example-part-1.wav", "example-part-2.wav"]
+
+
+@app.command("make-example")
+def make_example(
+    out_dir: Path = typer.Option(Path("examples"), "--out-dir"),
+    config_path: Optional[Path] = typer.Option(None, "--config"),
+) -> None:
+    """Generate the synthetic WAVs examples/episode.example.yaml's `parts` point at
+    (tone + white noise, no real recording needed), so `run.ps1
+    examples\\episode.example.yaml` works right after a fresh clone. Skips any
+    file that already exists.
+    """
+    config = _load_app_config(config_path)
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for name in EXAMPLE_PART_NAMES:
+        path = out_dir / name
+        if path.is_file():
+            continue
+        generate_synthetic_audio(path, duration=20.0, config=config)
+        typer.echo(f"generated {path}")
+    typer.echo("MAKE-EXAMPLE OK")
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@
 tools/
 profiles/*.yaml
 !profiles/*.example.yaml
+examples/*.local.yaml
 out/
 samples/
 __pycache__/
