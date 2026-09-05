@@ -1,18 +1,54 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
 from .config import AppConfig
 from .ffmpeg import run_ffmpeg
 from .plan import EditPlan, PlanItem
 
+FILLER_CROSSFADE_SECONDS = 0.015
 
-def _build_filter_complex(keep_items: list[PlanItem], crossfade_seconds: float) -> tuple[str, str]:
+
+@dataclass
+class _RenderSegment:
+    start: float
+    end: float
+    # True when this segment's start boundary was created by carving an
+    # enabled filler cut out of a keep item, rather than being an original
+    # plan boundary; the join before it then uses FILLER_CROSSFADE_SECONDS
+    # instead of the plan's configured crossfade.
+    fade_before: bool = False
+
+
+def _carve_filler_cuts(keep_items: list[PlanItem], filler_items: list[PlanItem]) -> list[_RenderSegment]:
+    """Cut enabled filler items out of the keep items that contain them.
+
+    audit_plan() already guarantees every filler item lies fully inside some
+    keep item and that filler items don't overlap each other.
+    """
+    enabled_fillers = sorted((f for f in filler_items if f.enabled), key=lambda f: f.start)
+    segments: list[_RenderSegment] = []
+    for keep in sorted(keep_items, key=lambda it: it.start):
+        cursor = keep.start
+        fade_before = False
+        inside = [f for f in enabled_fillers if f.start >= keep.start and f.end <= keep.end]
+        for filler in inside:
+            if filler.start > cursor:
+                segments.append(_RenderSegment(cursor, filler.start, fade_before=fade_before))
+                fade_before = True
+            cursor = max(cursor, filler.end)
+        if keep.end > cursor:
+            segments.append(_RenderSegment(cursor, keep.end, fade_before=fade_before))
+    return segments
+
+
+def _build_filter_complex(segments: list[_RenderSegment], crossfade_seconds: float) -> tuple[str, str]:
     parts: list[str] = []
     labels: list[str] = []
-    for idx, item in enumerate(keep_items):
+    for idx, seg in enumerate(segments):
         label = f"seg{idx}"
-        parts.append(f"[0:a]atrim=start={item.start:.6f}:end={item.end:.6f},asetpts=PTS-STARTPTS[{label}]")
+        parts.append(f"[0:a]atrim=start={seg.start:.6f}:end={seg.end:.6f},asetpts=PTS-STARTPTS[{label}]")
         labels.append(label)
 
     if len(labels) == 1:
@@ -20,8 +56,11 @@ def _build_filter_complex(keep_items: list[PlanItem], crossfade_seconds: float) 
 
     current = labels[0]
     for idx in range(1, len(labels)):
+        base_d = FILLER_CROSSFADE_SECONDS if segments[idx].fade_before else crossfade_seconds
+        min_seg_duration = min(segments[idx - 1].end - segments[idx - 1].start, segments[idx].end - segments[idx].start)
+        d = max(0.001, min(base_d, min_seg_duration / 2))
         out_label = f"xf{idx}"
-        parts.append(f"[{current}][{labels[idx]}]acrossfade=d={crossfade_seconds:.6f}[{out_label}]")
+        parts.append(f"[{current}][{labels[idx]}]acrossfade=d={d:.6f}[{out_label}]")
         current = out_label
     return ";".join(parts), current
 
@@ -53,11 +92,13 @@ def apply_plan(plan: EditPlan, audio_path: Path, out_dir: Path, config: AppConfi
     if not keep_items:
         raise ValueError("plan has no enabled 'keep' items to render")
 
-    configured_d = plan.render.crossfade_ms / 1000.0
-    min_seg_duration = min(item.end - item.start for item in keep_items)
-    crossfade_seconds = max(0.001, min(configured_d, min_seg_duration / 2))
+    filler_items = [item for item in plan.items if item.kind == "filler"]
+    segments = _carve_filler_cuts(keep_items, filler_items)
+    if not segments:
+        raise ValueError("plan has no audio left to render after filler cuts")
 
-    filter_complex, out_label = _build_filter_complex(keep_items, crossfade_seconds)
+    configured_d = plan.render.crossfade_ms / 1000.0
+    filter_complex, out_label = _build_filter_complex(segments, configured_d)
 
     args = [
         "-i", str(audio_path),

@@ -7,7 +7,13 @@ from pathlib import Path
 
 from .plan import EditPlan
 
-ALLOWED_KINDS = {"keep", "cut", "fade"}
+ALLOWED_KINDS = {"keep", "cut", "fade", "filler"}
+
+# "filler" items are proposal annotations nested inside a "keep" span (a human
+# flips enabled=true to turn one into an actual cut at apply time); they are
+# exempt from the partition-style ordering/overlap check below, which only
+# makes sense for kinds that tile the timeline.
+PARTITION_KINDS = {"keep", "cut", "fade"}
 
 
 @dataclass
@@ -67,8 +73,11 @@ def audit_plan(plan: EditPlan, audio_path: Path) -> AuditResult:
     # Ordering and overlap are contract-level properties of the whole plan:
     # disabled items must still be sorted and non-overlapping so that
     # toggling `enabled` can never turn a valid plan into an invalid one.
-    sorted_items = sorted(plan.items, key=lambda it: it.start)
-    if [it.id for it in plan.items] != [it.id for it in sorted_items]:
+    # Only partition kinds (keep/cut/fade) are checked here; filler items
+    # intentionally nest inside a keep item's span (see PARTITION_KINDS).
+    partition_items = [it for it in plan.items if it.kind in PARTITION_KINDS]
+    sorted_items = sorted(partition_items, key=lambda it: it.start)
+    if [it.id for it in partition_items] != [it.id for it in sorted_items]:
         errors.append("items are not sorted by start time")
 
     for prev, curr in zip(sorted_items, sorted_items[1:]):
@@ -77,6 +86,23 @@ def audit_plan(plan: EditPlan, audio_path: Path) -> AuditResult:
                 f"items {prev.id} and {curr.id} overlap: "
                 f"[{prev.start}, {prev.end}) vs [{curr.start}, {curr.end})"
             )
+
+    # Filler proposals may not overlap each other, and each one must fall
+    # fully inside some "keep" item: a filler cut can only trim audio that
+    # would otherwise be kept, never expand what a "cut" item already removes.
+    filler_items = [it for it in plan.items if it.kind == "filler"]
+    sorted_fillers = sorted(filler_items, key=lambda it: it.start)
+    for prev, curr in zip(sorted_fillers, sorted_fillers[1:]):
+        if curr.start < prev.end:
+            errors.append(
+                f"filler items {prev.id} and {curr.id} overlap: "
+                f"[{prev.start}, {prev.end}) vs [{curr.start}, {curr.end})"
+            )
+
+    keep_items_all = [it for it in plan.items if it.kind == "keep"]
+    for filler in filler_items:
+        if not any(k.start <= filler.start and filler.end <= k.end for k in keep_items_all):
+            errors.append(f"filler item {filler.id}: [{filler.start}, {filler.end}] is not inside any keep item")
 
     if errors:
         return AuditResult(ok=False, errors=errors)
