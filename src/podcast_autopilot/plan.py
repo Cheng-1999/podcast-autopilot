@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 SCHEMA_ID = "podcast-autopilot.edit-plan/v1"
 
@@ -47,12 +47,21 @@ class RenderSettings(BaseModel):
 class EditPlan(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    schema_id: str = Field(alias="schema", default=SCHEMA_ID)
+    # Required and pinned: a plan missing "schema" or carrying any other id
+    # (future v2, typo, foreign tool) is rejected at load time, fail closed.
+    schema_id: str = Field(alias="schema")
     created: str
     source: SourceInfo
     profile: ProfileInfo
     items: list[PlanItem]
     render: RenderSettings = Field(default_factory=RenderSettings)
+
+    @field_validator("schema_id")
+    @classmethod
+    def _check_schema_id(cls, value: str) -> str:
+        if value != SCHEMA_ID:
+            raise ValueError(f"unsupported edit-plan schema {value!r}; expected {SCHEMA_ID!r}")
+        return value
 
 
 def load_plan(path: Path) -> EditPlan:

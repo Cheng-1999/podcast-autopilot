@@ -57,10 +57,12 @@ def audit_plan(plan: EditPlan, audio_path: Path) -> AuditResult:
                 f"item {item.id}: range [{item.start}, {item.end}] out of bounds [0, {duration}]"
             )
 
-    enabled_items = [item for item in plan.items if item.enabled]
-    sorted_items = sorted(enabled_items, key=lambda it: it.start)
-    if [it.id for it in enabled_items] != [it.id for it in sorted_items]:
-        errors.append("enabled items are not sorted by start time")
+    # Ordering and overlap are contract-level properties of the whole plan:
+    # disabled items must still be sorted and non-overlapping so that
+    # toggling `enabled` can never turn a valid plan into an invalid one.
+    sorted_items = sorted(plan.items, key=lambda it: it.start)
+    if [it.id for it in plan.items] != [it.id for it in sorted_items]:
+        errors.append("items are not sorted by start time")
 
     for prev, curr in zip(sorted_items, sorted_items[1:]):
         if curr.start < prev.end:
@@ -72,6 +74,7 @@ def audit_plan(plan: EditPlan, audio_path: Path) -> AuditResult:
     if errors:
         return AuditResult(ok=False, errors=errors)
 
+    enabled_items = [item for item in plan.items if item.enabled]
     total_keep = sum(it.end - it.start for it in enabled_items if it.kind == "keep")
     total_cut = sum(it.end - it.start for it in enabled_items if it.kind == "cut")
     coverage_ratio = total_keep / duration if duration > 0 else 0.0

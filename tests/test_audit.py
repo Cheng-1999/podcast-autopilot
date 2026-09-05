@@ -69,3 +69,37 @@ def test_rejects_unknown_kind(audio_file: Path):
     result = audit_plan(_make_plan(source, items), audio_file)
     assert not result.ok
     assert any("unknown kind" in e for e in result.errors)
+
+
+def test_rejects_unsorted_items_even_when_disabled(audio_file: Path):
+    source = SourceInfo(path=str(audio_file), sha256=sha256_of_file(audio_file), duration=10.0, sr=44100, channels=1)
+    items = [
+        PlanItem(id="b", kind="keep", start=5.0, end=10.0, enabled=False),
+        PlanItem(id="a", kind="keep", start=0.0, end=5.0),
+    ]
+    result = audit_plan(_make_plan(source, items), audio_file)
+    assert not result.ok
+    assert any("not sorted" in e for e in result.errors)
+
+
+def test_rejects_overlap_with_disabled_item(audio_file: Path):
+    source = SourceInfo(path=str(audio_file), sha256=sha256_of_file(audio_file), duration=10.0, sr=44100, channels=1)
+    items = [
+        PlanItem(id="a", kind="keep", start=0.0, end=6.0),
+        PlanItem(id="b", kind="cut", start=5.0, end=10.0, enabled=False),
+    ]
+    result = audit_plan(_make_plan(source, items), audio_file)
+    assert not result.ok
+    assert any("overlap" in e for e in result.errors)
+
+
+def test_disabled_items_excluded_from_coverage(audio_file: Path):
+    source = SourceInfo(path=str(audio_file), sha256=sha256_of_file(audio_file), duration=10.0, sr=44100, channels=1)
+    items = [
+        PlanItem(id="a", kind="keep", start=0.0, end=5.0),
+        PlanItem(id="b", kind="keep", start=5.0, end=10.0, enabled=False),
+    ]
+    result = audit_plan(_make_plan(source, items), audio_file)
+    assert result.ok, result.errors
+    assert result.total_keep_duration == pytest.approx(5.0)
+    assert result.coverage_ratio == pytest.approx(0.5)

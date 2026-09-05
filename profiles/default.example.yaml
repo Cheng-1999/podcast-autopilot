@@ -3,7 +3,8 @@
 
 name: default
 
-# Optional: point at an ffmpeg/ffprobe install directory or exe.
+# Optional: an ffmpeg install directory (containing ffmpeg.exe and ffprobe.exe)
+# or the path to ffmpeg.exe itself; ffprobe.exe is taken from the same folder.
 # Resolution order is: this value > PATH > tools/ffmpeg/bin.
 ffmpeg_path: null
 

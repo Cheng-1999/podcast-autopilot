@@ -38,14 +38,25 @@ def load_config(config_path: Path | None = None) -> AppConfig:
 def resolve_binary(name: str, configured_path: str | None = None) -> Path:
     """Resolve an ffmpeg-suite binary.
 
-    Order: configured_path (dir or exe) > PATH > tools/ffmpeg/bin. Fails
-    closed with a message pointing at the README install steps.
+    Order: configured_path > PATH > tools/ffmpeg/bin. Fails closed with a
+    message pointing at the README install steps.
+
+    `configured_path` may be a directory (looked up for `<name>.exe`) or a
+    path to one executable. If it names an executable with a different stem
+    (e.g. ffmpeg.exe while resolving ffprobe), the sibling `<name>.exe` in
+    the same directory is used, so a single `ffmpeg_path` setting serves
+    both tools instead of returning ffmpeg.exe for ffprobe.
     """
     exe_name = f"{name}.exe" if os.name == "nt" else name
 
     if configured_path:
         configured = Path(configured_path)
-        candidate = configured / exe_name if configured.is_dir() else configured
+        if configured.is_dir():
+            candidate = configured / exe_name
+        elif configured.stem.lower() == name.lower():
+            candidate = configured
+        else:
+            candidate = configured.parent / exe_name
         if candidate.is_file():
             return candidate
 
