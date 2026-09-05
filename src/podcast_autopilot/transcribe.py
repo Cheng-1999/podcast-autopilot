@@ -14,7 +14,7 @@ TRANSCRIPT_SCHEMA_ID = "podcast-autopilot.transcript/v1"
 # tag tends to drift toward Simplified output regardless of this prompt, so
 # it is a nudge, not a guarantee -- the real fix is the opencc s2twp pass
 # applied to every segment/word after transcription.
-INITIAL_PROMPT_ZH_TW = "這是一段繁體中文的Podcast逐字稿,請使用正體中文與全形標點符號,例如:「」、,。!?"
+INITIAL_PROMPT_ZH_TW = "這是一段繁體中文的Podcast逐字稿，請使用正體中文與全形標點符號，例如：「」、，。！？"
 
 _MODEL_CACHE: dict[tuple[str, str], object] = {}
 
@@ -177,25 +177,83 @@ def detect_fillers(
     A word only qualifies when: its stripped text is one of `filler_words`,
     its probability is above `min_probability`, and the gap to the previous
     word's end and to the next word's start are both greater than
-    `pause_threshold_s`. The first/last word in the list are treated as
-    bordered by the start/end of the audio, which counts as isolated.
+    `pause_threshold_s`. The first and last word of the list have no
+    neighbour on one side, so a pause there cannot be confirmed and they are
+    never proposed (fail closed: a proposal must be backed by two measured
+    pauses).
     """
     filler_set = set(filler_words) if filler_words is not None else set(DEFAULT_FILLER_WORDS)
     candidates: list[dict] = []
-    for i, w in enumerate(words):
+    for i in range(1, len(words) - 1):
+        w = words[i]
         token = w.word.strip()
         if token not in filler_set:
             continue
         if w.probability <= min_probability:
             continue
-        prev_gap = w.start - words[i - 1].end if i > 0 else None
-        next_gap = words[i + 1].start - w.end if i < len(words) - 1 else None
-        if prev_gap is not None and prev_gap <= pause_threshold_s:
-            continue
-        if next_gap is not None and next_gap <= pause_threshold_s:
+        prev_gap = w.start - words[i - 1].end
+        next_gap = words[i + 1].start - w.end
+        if prev_gap <= pause_threshold_s or next_gap <= pause_threshold_s:
             continue
         candidates.append({"word": token, "start": w.start, "end": w.end, "probability": w.probability})
     return candidates
+
+
+FILLER_MATCH_TOLERANCE_S = 0.001
+
+
+def _filler_index(item_id: str) -> int:
+    try:
+        return int(item_id.rsplit("-", 1)[1])
+    except (IndexError, ValueError):
+        return 0
+
+
+def merge_filler_items(existing_items: list[PlanItem], candidates: list[dict]) -> list[PlanItem]:
+    """Return the plan's item list with filler proposals replaced by `candidates`, idempotently.
+
+    - A candidate whose [start, end] matches an existing filler item (within
+      FILLER_MATCH_TOLERANCE_S) keeps that item as-is, including its id and
+      any `enabled=true` a human already set.
+    - Existing disabled filler proposals that no longer match any candidate
+      are dropped (they were only ever proposals).
+    - Existing *enabled* filler items that no longer match are kept: a human
+      decision is never silently discarded by re-running detection.
+    - Remaining candidates become new disabled proposals numbered after the
+      highest surviving filler index.
+    Running this twice with the same transcript yields the same item list,
+    so plan-fillers never accumulates duplicate (overlapping) proposals.
+    """
+    non_filler = [it for it in existing_items if it.kind != "filler"]
+    existing_fillers = [it for it in existing_items if it.kind == "filler"]
+
+    kept: list[PlanItem] = []
+    unmatched: list[dict] = []
+    matched_ids: set[str] = set()
+    for c in candidates:
+        match = next(
+            (
+                it
+                for it in existing_fillers
+                if it.id not in matched_ids
+                and abs(it.start - c["start"]) <= FILLER_MATCH_TOLERANCE_S
+                and abs(it.end - c["end"]) <= FILLER_MATCH_TOLERANCE_S
+            ),
+            None,
+        )
+        if match is not None:
+            matched_ids.add(match.id)
+            kept.append(match)
+        else:
+            unmatched.append(c)
+
+    for it in existing_fillers:
+        if it.id not in matched_ids and it.enabled:
+            kept.append(it)
+
+    next_index = max((_filler_index(it.id) for it in kept), default=0) + 1
+    new_items = filler_plan_items(unmatched, start_index=next_index)
+    return sorted(non_filler + kept + new_items, key=lambda it: it.start)
 
 
 def filler_plan_items(candidates: list[dict], start_index: int = 1) -> list[PlanItem]:

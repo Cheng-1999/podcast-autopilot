@@ -33,6 +33,29 @@ def sha256_of_file(path: Path) -> str:
     return h.hexdigest()
 
 
+def _effective_keep_spans(plan: EditPlan) -> list[tuple[float, float]]:
+    """Spans a filler item may live in, mirroring how apply.py picks what to render.
+
+    Explicit "keep" items win when present. A cut-only plan (the pause
+    planner's output) has no keep items: apply.py derives the kept audio as
+    the complement of the cuts, so the same complement is used here. All cut
+    items count, enabled or not, so that toggling a cut can never make a
+    previously valid filler proposal invalid (fail closed).
+    """
+    keeps = [(it.start, it.end) for it in plan.items if it.kind == "keep"]
+    if keeps:
+        return keeps
+    spans: list[tuple[float, float]] = []
+    cursor = 0.0
+    for cut in sorted((it for it in plan.items if it.kind == "cut"), key=lambda it: it.start):
+        if cut.start > cursor:
+            spans.append((cursor, cut.start))
+        cursor = max(cursor, cut.end)
+    if cursor < plan.source.duration:
+        spans.append((cursor, plan.source.duration))
+    return spans
+
+
 def audit_plan(plan: EditPlan, audio_path: Path) -> AuditResult:
     """Fail-closed validation of an edit plan against the audio file on disk.
 
@@ -99,17 +122,26 @@ def audit_plan(plan: EditPlan, audio_path: Path) -> AuditResult:
                 f"[{prev.start}, {prev.end}) vs [{curr.start}, {curr.end})"
             )
 
-    keep_items_all = [it for it in plan.items if it.kind == "keep"]
+    keep_spans = _effective_keep_spans(plan)
     for filler in filler_items:
-        if not any(k.start <= filler.start and filler.end <= k.end for k in keep_items_all):
-            errors.append(f"filler item {filler.id}: [{filler.start}, {filler.end}] is not inside any keep item")
+        if not any(ks <= filler.start and filler.end <= ke for ks, ke in keep_spans):
+            errors.append(f"filler item {filler.id}: [{filler.start}, {filler.end}] is not inside any keep span")
 
     if errors:
         return AuditResult(ok=False, errors=errors)
 
     enabled_items = [item for item in plan.items if item.enabled]
     total_keep = sum(it.end - it.start for it in enabled_items if it.kind == "keep")
-    total_cut = sum(it.end - it.start for it in enabled_items if it.kind == "cut")
+    # An enabled filler is rendered as a cut by apply.py, so it must count
+    # toward the removal budget exactly like a "cut" item; otherwise a plan
+    # could pass audit and still remove more audio than max_removed_fraction.
+    total_cut = sum(it.end - it.start for it in enabled_items if it.kind in ("cut", "filler"))
+    enabled_keeps = [it for it in enabled_items if it.kind == "keep"]
+    total_keep -= sum(
+        f.end - f.start
+        for f in enabled_items
+        if f.kind == "filler" and any(k.start <= f.start and f.end <= k.end for k in enabled_keeps)
+    )
     max_fraction = plan.profile.max_removed_fraction
     if not math.isfinite(max_fraction) or max_fraction < 0 or max_fraction > 1:
         return AuditResult(ok=False, errors=[f"profile max_removed_fraction is invalid: {max_fraction}"])

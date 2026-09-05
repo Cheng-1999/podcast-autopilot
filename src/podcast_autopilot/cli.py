@@ -175,9 +175,10 @@ def plan_fillers(
         profile = plan_mod.ProfileInfo(name=config.profile_name, sha256=None)
         edit_plan = plan_mod.make_identity_keep_plan(source, profile, created)
 
-    existing_filler_count = sum(1 for it in edit_plan.items if it.kind == "filler")
-    new_items = transcribe_mod.filler_plan_items(candidates, start_index=existing_filler_count + 1)
-    edit_plan.items = sorted(edit_plan.items + new_items, key=lambda it: it.start)
+    # Idempotent: re-running replaces stale disabled proposals instead of
+    # appending duplicates (which would overlap and fail audit); matching
+    # proposals and any human-enabled filler items are preserved.
+    edit_plan.items = transcribe_mod.merge_filler_items(edit_plan.items, candidates)
 
     result = audit_mod.audit_plan(edit_plan, audio_path)
     if not result.ok:

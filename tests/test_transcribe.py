@@ -40,10 +40,23 @@ def test_rejects_low_probability():
     assert detect_fillers(words, filler_words=["嗯"]) == []
 
 
-def test_first_and_last_word_bordered_by_audio_edges_count_as_isolated():
-    words = [Word(word="嗯", start=0.0, end=0.2, probability=0.9)]
-    candidates = detect_fillers(words, filler_words=["嗯"])
-    assert len(candidates) == 1
+def test_first_and_last_word_are_never_proposed_without_pauses_on_both_sides():
+    # No neighbour on one side means a pause there cannot be measured, so the
+    # "pause > threshold on both sides" rule fails closed for edge words.
+    assert detect_fillers([Word(word="嗯", start=0.0, end=0.2, probability=0.9)], filler_words=["嗯"]) == []
+    words = [
+        Word(word="嗯", start=0.0, end=0.2, probability=0.9),
+        Word(word="今天", start=1.0, end=1.5, probability=0.9),
+        Word(word="嗯", start=2.0, end=2.2, probability=0.9),
+    ]
+    assert detect_fillers(words, filler_words=["嗯"]) == []
+
+
+def test_prompt_uses_only_full_width_punctuation():
+    from podcast_autopilot.transcribe import INITIAL_PROMPT_ZH_TW
+
+    ascii_punct = [c for c in INITIAL_PROMPT_ZH_TW if ord(c) < 128 and not c.isalnum()]
+    assert ascii_punct == []
 
 
 def test_non_filler_word_ignored():
@@ -52,7 +65,11 @@ def test_non_filler_word_ignored():
 
 
 def test_default_filler_word_list_used_when_not_specified():
-    words = [Word(word="然後", start=1.0, end=1.3, probability=0.9)]
+    words = [
+        Word(word="今天", start=0.0, end=0.5, probability=0.9),
+        Word(word="然後", start=1.0, end=1.3, probability=0.9),
+        Word(word="天氣", start=1.8, end=2.2, probability=0.9),
+    ]
     candidates = detect_fillers(words)
     assert len(candidates) == 1
     assert candidates[0]["word"] == "然後"
@@ -108,3 +125,42 @@ def test_transcribe_smoke_produces_three_artifacts(tmp_path: Path):
     assert (target_dir / "transcript.json").is_file()
     assert (target_dir / "transcript.srt").is_file()
     assert (target_dir / "transcript.md").is_file()
+
+
+def _cands(*spans):
+    return [{"word": "嗯", "start": a, "end": b, "probability": 0.8} for a, b in spans]
+
+
+def test_merge_filler_items_is_idempotent():
+    from podcast_autopilot.plan import PlanItem
+    from podcast_autopilot.transcribe import merge_filler_items
+
+    base = [PlanItem(id="a", kind="keep", start=0.0, end=10.0)]
+    once = merge_filler_items(base, _cands((1.0, 1.2), (5.0, 5.3)))
+    twice = merge_filler_items(once, _cands((1.0, 1.2), (5.0, 5.3)))
+    assert [(it.id, it.kind, it.start, it.end, it.enabled) for it in once] == [
+        (it.id, it.kind, it.start, it.end, it.enabled) for it in twice
+    ]
+    assert sum(it.kind == "filler" for it in twice) == 2
+    assert [it.id for it in twice if it.kind == "filler"] == ["filler-0001", "filler-0002"]
+
+
+def test_merge_filler_items_preserves_human_enabled_and_drops_stale_proposals():
+    from podcast_autopilot.plan import PlanItem
+    from podcast_autopilot.transcribe import merge_filler_items
+
+    existing = [
+        PlanItem(id="a", kind="keep", start=0.0, end=10.0),
+        PlanItem(id="filler-0001", kind="filler", start=1.0, end=1.2, enabled=True),
+        PlanItem(id="filler-0002", kind="filler", start=3.0, end=3.2, enabled=False),
+        PlanItem(id="filler-0003", kind="filler", start=5.0, end=5.3, enabled=True),
+    ]
+    # New detection: 0001 still matches, 0002 is gone, 0003 is gone, one new at 7.0.
+    merged = merge_filler_items(existing, _cands((1.0, 1.2), (7.0, 7.1)))
+    fillers = {it.id: it for it in merged if it.kind == "filler"}
+    assert set(fillers) == {"filler-0001", "filler-0003", "filler-0004"}
+    assert fillers["filler-0001"].enabled is True  # matched: human decision kept
+    assert fillers["filler-0003"].enabled is True  # unmatched but enabled: kept
+    assert fillers["filler-0004"].enabled is False and fillers["filler-0004"].start == 7.0
+    assert [it.kind for it in merged if it.kind != "filler"] == ["keep"]
+    assert [it.start for it in merged] == sorted(it.start for it in merged)

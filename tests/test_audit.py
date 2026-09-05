@@ -111,3 +111,55 @@ def test_disabled_items_excluded_from_coverage(audio_file: Path):
     assert result.ok, result.errors
     assert result.total_keep_duration == pytest.approx(5.0)
     assert result.coverage_ratio == pytest.approx(0.5)
+
+
+def test_enabled_filler_counts_toward_removal_limit(audio_file: Path):
+    source = SourceInfo(path=str(audio_file), sha256=sha256_of_file(audio_file), duration=10.0, sr=44100, channels=1)
+    items = [
+        PlanItem(id="a", kind="keep", start=0.0, end=10.0),
+        PlanItem(id="filler-0001", kind="filler", start=1.0, end=4.0, enabled=True),
+    ]
+    plan = _make_plan(source, items)
+    plan.profile.max_removed_fraction = 0.25
+    result = audit_plan(plan, audio_file)
+    assert not result.ok
+    assert any("remove" in e for e in result.errors)
+
+    # Same plan with the proposal left disabled removes nothing.
+    items[1].enabled = False
+    result = audit_plan(plan, audio_file)
+    assert result.ok, result.errors
+    assert result.total_cut_duration == pytest.approx(0.0)
+    assert result.total_keep_duration == pytest.approx(10.0)
+
+
+def test_enabled_filler_is_reported_as_cut_duration(audio_file: Path):
+    source = SourceInfo(path=str(audio_file), sha256=sha256_of_file(audio_file), duration=10.0, sr=44100, channels=1)
+    items = [
+        PlanItem(id="a", kind="keep", start=0.0, end=10.0),
+        PlanItem(id="filler-0001", kind="filler", start=1.0, end=1.5, enabled=True),
+    ]
+    result = audit_plan(_make_plan(source, items), audio_file)
+    assert result.ok, result.errors
+    assert result.total_cut_duration == pytest.approx(0.5)
+    assert result.total_keep_duration == pytest.approx(9.5)
+
+
+def test_filler_in_cut_only_plan_must_sit_in_the_cut_complement(audio_file: Path):
+    # Pause plans store only "cut" items; apply.py renders the complement, so
+    # audit accepts fillers inside the complement and rejects ones overlapping a cut.
+    source = SourceInfo(path=str(audio_file), sha256=sha256_of_file(audio_file), duration=10.0, sr=44100, channels=1)
+    items = [
+        PlanItem(id="cut-0001", kind="cut", start=4.0, end=5.0),
+        PlanItem(id="filler-0001", kind="filler", start=1.0, end=1.2, enabled=False),
+    ]
+    result = audit_plan(_make_plan(source, items), audio_file)
+    assert result.ok, result.errors
+
+    items = [
+        PlanItem(id="cut-0001", kind="cut", start=4.0, end=5.0, enabled=False),
+        PlanItem(id="filler-0001", kind="filler", start=4.5, end=5.5, enabled=False),
+    ]
+    result = audit_plan(_make_plan(source, items), audio_file)
+    assert not result.ok
+    assert any("filler item filler-0001" in e for e in result.errors)
