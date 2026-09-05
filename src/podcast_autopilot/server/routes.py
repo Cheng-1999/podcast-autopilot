@@ -80,7 +80,10 @@ def _validate_chapters_against_parts(manifest: assemble_mod.EpisodeManifest, bas
         part_path = assemble_mod._resolve(p, base_dir)
         if not part_path.is_file():
             raise HTTPException(422, f"part not found: {part_path}")
-        total += probe_mod.probe_audio(part_path, config)["duration"]
+        try:
+            total += probe_mod.probe_audio(part_path, config)["duration"]
+        except Exception as exc:
+            raise HTTPException(422, f"part failed to probe as audio: {part_path}: {exc}") from exc
     try:
         starts = assemble_mod._chapter_starts(manifest.chapters)
     except assemble_mod.AssembleError as exc:

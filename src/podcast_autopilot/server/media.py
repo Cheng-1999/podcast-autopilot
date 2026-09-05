@@ -11,7 +11,15 @@ from typing import Optional
 CHUNK_SIZE = 1024 * 1024
 
 
+def _is_safe_segment(value: str) -> bool:
+    if not value or value in (".", ".."):
+        return False
+    return Path(value).name == value
+
+
 def resolve_media_path(project_root: Path, episode_id: str, rel_path: str) -> Optional[Path]:
+    if not _is_safe_segment(episode_id):
+        return None
     if not rel_path or ".." in Path(rel_path).parts:
         return None
     for base_name in ("out", "media"):
