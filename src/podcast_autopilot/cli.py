@@ -9,7 +9,6 @@ from typing import Optional
 import typer
 
 from . import apply as apply_mod
-from . import assemble as assemble_mod
 from . import audit as audit_mod
 from . import plan as plan_mod
 from . import probe as probe_mod
@@ -252,26 +251,6 @@ def selftest(
         f"delta={delta * 1000:.1f}ms"
     )
     typer.echo(f"receipt: {receipt_path}")
-
-
-@app.command()
-def assemble(
-    episode_yaml: Path = typer.Argument(..., exists=True, readable=True),
-    out_dir: Path = typer.Option(Path("out"), "--out-dir"),
-    config_path: Optional[Path] = typer.Option(None, "--config"),
-) -> None:
-    """Join parts, intro/outro, ducked BGM and chapters into a tagged episode MP3."""
-    config = _load_app_config(config_path)
-    try:
-        result = assemble_mod.assemble_episode(episode_yaml, out_dir, config)
-    except assemble_mod.AssembleError as exc:
-        typer.echo(f"ASSEMBLE FAILED: {exc}", err=True)
-        raise typer.Exit(code=1) from exc
-    typer.echo(
-        f"ASSEMBLE OK: output={result['output']} duration={result['duration']:.3f}s "
-        f"lufs={result['loudness']['input_i']:.1f} tp={result['loudness']['input_tp']:.1f}"
-    )
-    typer.echo(f"receipt: {result['receipt']}")
 
 
 if __name__ == "__main__":
