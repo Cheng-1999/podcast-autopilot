@@ -7,7 +7,7 @@ interface ItemListProps {
   selectedItemId: string | null;
   onSelect: (id: string) => void;
   onToggleEnabled: (id: string) => void;
-  errorItemIds: Set<string>;
+  errorsByItemId: Map<string, string[]>;
 }
 
 const KIND_LABEL: Record<string, string> = {
@@ -23,7 +23,7 @@ export const ItemList: React.FC<ItemListProps> = ({
   selectedItemId,
   onSelect,
   onToggleEnabled,
-  errorItemIds,
+  errorsByItemId,
 }) => {
   const rowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
 
@@ -84,59 +84,72 @@ export const ItemList: React.FC<ItemListProps> = ({
           <tbody>
             {items.map((item) => {
               const selected = item.id === selectedItemId;
-              const hasError = errorItemIds.has(item.id);
+              const itemErrors = errorsByItemId.get(item.id);
+              const hasError = Boolean(itemErrors && itemErrors.length > 0);
               return (
-                <tr
-                  key={item.id}
-                  ref={(el) => {
-                    rowRefs.current[item.id] = el;
-                  }}
-                  onClick={() => onSelect(item.id)}
-                  style={{
-                    height: "var(--row-height)",
-                    cursor: "pointer",
-                    backgroundColor: selected ? "var(--surface-active)" : "transparent",
-                    borderLeft: hasError ? "2px solid var(--semantic-red)" : "2px solid transparent",
-                  }}
-                >
-                  <td style={{ padding: "0 8px" }}>
-                    <input
-                      type="checkbox"
-                      checked={item.enabled}
-                      onChange={(e) => {
-                        e.stopPropagation();
-                        onToggleEnabled(item.id);
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                  </td>
-                  <td className="mono" style={{ padding: "0 8px", color: "var(--text-primary)" }}>
-                    {item.id}
-                  </td>
-                  <td style={{ padding: "0 8px", color: "var(--text-muted)" }}>
-                    {KIND_LABEL[item.kind] ?? item.kind}
-                  </td>
-                  <td className="mono tabular-nums" style={{ padding: "0 8px" }}>
-                    {formatTimeTenths(item.start)}
-                  </td>
-                  <td className="mono tabular-nums" style={{ padding: "0 8px" }}>
-                    {formatTimeTenths(item.end)}
-                  </td>
-                  <td
-                    style={{
-                      padding: "0 8px",
-                      color: "var(--text-muted)",
-                      fontSize: "var(--font-size-xs)",
-                      maxWidth: "160px",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
+                <React.Fragment key={item.id}>
+                  <tr
+                    ref={(el) => {
+                      rowRefs.current[item.id] = el;
                     }}
-                    title={item.reason}
+                    onClick={() => onSelect(item.id)}
+                    style={{
+                      height: "var(--row-height)",
+                      cursor: "pointer",
+                      backgroundColor: selected ? "var(--surface-active)" : "transparent",
+                      borderLeft: hasError ? "2px solid var(--semantic-red)" : "2px solid transparent",
+                    }}
                   >
-                    {item.reason}
-                  </td>
-                </tr>
+                    <td style={{ padding: "0 8px" }}>
+                      <input
+                        type="checkbox"
+                        checked={item.enabled}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          onToggleEnabled(item.id);
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </td>
+                    <td className="mono" style={{ padding: "0 8px", color: "var(--text-primary)" }}>
+                      {item.id}
+                    </td>
+                    <td style={{ padding: "0 8px", color: "var(--text-muted)" }}>
+                      {KIND_LABEL[item.kind] ?? item.kind}
+                    </td>
+                    <td className="mono tabular-nums" style={{ padding: "0 8px" }}>
+                      {formatTimeTenths(item.start)}
+                    </td>
+                    <td className="mono tabular-nums" style={{ padding: "0 8px" }}>
+                      {formatTimeTenths(item.end)}
+                    </td>
+                    <td
+                      style={{
+                        padding: "0 8px",
+                        color: "var(--text-muted)",
+                        fontSize: "var(--font-size-xs)",
+                        maxWidth: "160px",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                      title={item.reason}
+                    >
+                      {item.reason}
+                    </td>
+                  </tr>
+                  {hasError && (
+                    <tr style={{ borderLeft: "2px solid var(--semantic-red)" }}>
+                      <td colSpan={6} style={{ padding: "2px 8px 6px 34px" }}>
+                        {itemErrors!.map((msg, i) => (
+                          <div key={i} style={{ color: "var(--semantic-red)", fontSize: "var(--font-size-xs)" }}>
+                            {msg}
+                          </div>
+                        ))}
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
               );
             })}
           </tbody>

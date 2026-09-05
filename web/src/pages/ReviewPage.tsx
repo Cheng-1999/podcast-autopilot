@@ -27,12 +27,17 @@ function partStems(episode: EpisodeDetail | undefined): string[] {
 }
 
 /** Extract the ids referenced by audit_plan-style error strings, e.g.
- * "item filler-99 overlaps with keep-0 [...]". Used to flag offending rows. */
-function extractErrorItemIds(errors: string[], knownIds: Set<string>): Set<string> {
-  const hit = new Set<string>();
+ * "item filler-99 overlaps with keep-0 [...]". Used to flag offending rows and
+ * to show the exact message(s) beside each one. */
+function extractErrorsByItemId(errors: string[], knownIds: Set<string>): Map<string, string[]> {
+  const hit = new Map<string, string[]>();
   for (const err of errors) {
     for (const id of knownIds) {
-      if (err.includes(id)) hit.add(id);
+      if (err.includes(id)) {
+        const existing = hit.get(id) ?? [];
+        existing.push(err);
+        hit.set(id, existing);
+      }
     }
   }
   return hit;
@@ -104,7 +109,7 @@ export const ReviewPage: React.FC = () => {
   const fillerCount = useMemo(() => computeEnabledFillerCount(localItems), [localItems]);
 
   const knownIds = useMemo(() => new Set(localItems.map((it) => it.id)), [localItems]);
-  const errorItemIds = useMemo(() => extractErrorItemIds(errors, knownIds), [errors, knownIds]);
+  const errorsByItemId = useMemo(() => extractErrorsByItemId(errors, knownIds), [errors, knownIds]);
 
   const audioSrc = activePart ? mediaUrl(id, `parts/${activePart}/${activePart}.clean.wav`) : "";
 
@@ -372,14 +377,14 @@ export const ReviewPage: React.FC = () => {
           minHeight: "420px",
         }}
       >
+        <TranscriptPane segments={transcript?.segments ?? []} currentTime={currentTime} onSeek={seek} />
         <ItemList
           items={localItems}
           selectedItemId={selectedItemId}
           onSelect={selectItem}
           onToggleEnabled={toggleEnabled}
-          errorItemIds={errorItemIds}
+          errorsByItemId={errorsByItemId}
         />
-        <TranscriptPane segments={transcript?.segments ?? []} currentTime={currentTime} onSeek={seek} />
       </div>
     </div>
   );
