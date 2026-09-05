@@ -16,6 +16,7 @@ import shutil
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Callable, Optional
 
 from . import apply as apply_mod
 from . import assemble as assemble_mod
@@ -51,6 +52,25 @@ STAGE_VERSIONS: dict[str, int] = {
 
 class RunError(RuntimeError):
     pass
+
+
+class CancelledError(RunError):
+    pass
+
+
+# One event per stage transition: {"stage", "part" (None for the episode-level
+# "assemble" stage), "event" ("started"|"finished"|"cached"|"skipped"), "elapsed"}.
+ProgressFn = Callable[[dict], None]
+
+
+def _emit(progress: Optional[ProgressFn], stage: str, part: Optional[str], event: str, elapsed: float = 0.0) -> None:
+    if progress is not None:
+        progress({"stage": stage, "part": part, "event": event, "elapsed": elapsed})
+
+
+def _check_cancel(should_cancel: Optional[Callable[[], bool]]) -> None:
+    if should_cancel is not None and should_cancel():
+        raise CancelledError("run cancelled")
 
 
 @dataclass
@@ -175,6 +195,8 @@ def run_part(
     skip: set[str],
     force: bool,
     dry_run: bool,
+    progress: Optional[ProgressFn] = None,
+    should_cancel: Optional[Callable[[], bool]] = None,
 ) -> PartReport:
     source = Path(source)
     part_dir = Path(parts_dir) / source.stem
@@ -189,21 +211,27 @@ def run_part(
 
     # --- probe ---
     stage = "probe"
+    _check_cancel(should_cancel)
     source_sha = audit_mod.sha256_of_file(source)
     if _cache_hit(cache, stage, source_sha, profile_sha, []) and isinstance(cache[stage].get("probe"), dict):
         report.probe_before = cache[stage]["probe"]
         report.stages.append(StageOutcome(stage, "cached"))
+        _emit(progress, stage, report.stem, "cached")
     elif dry_run:
         report.stages.append(StageOutcome(stage, "planned"))
     else:
+        _emit(progress, stage, report.stem, "started")
         t0 = time.monotonic()
         report.probe_before = probe_mod.probe_audio(source, config)
         _record(cache, stage, source_sha, profile_sha, {"probe": report.probe_before})
         _save_cache(cache_path, cache)
-        report.stages.append(StageOutcome(stage, "ran", time.monotonic() - t0))
+        elapsed = time.monotonic() - t0
+        report.stages.append(StageOutcome(stage, "ran", elapsed))
+        _emit(progress, stage, report.stem, "finished", elapsed)
 
     # --- clean ---
     stage = "clean"
+    _check_cancel(should_cancel)
     clean_wav = part_dir / f"{source.stem}.clean.wav"
     clean_receipt = part_dir / "clean_receipt.json"
     report.clean_wav = clean_wav
@@ -211,6 +239,7 @@ def run_part(
         if not clean_wav.is_file():
             raise RunError(f"--skip clean requested but {clean_wav} does not exist yet")
         report.stages.append(StageOutcome(stage, "skipped"))
+        _emit(progress, stage, report.stem, "skipped")
     else:
         key = source_sha
         if dry_run:
@@ -218,14 +247,18 @@ def run_part(
             report.stages.append(StageOutcome(stage, status))
         elif _cache_hit(cache, stage, key, profile_sha, [clean_wav, clean_receipt]):
             report.stages.append(StageOutcome(stage, "cached"))
+            _emit(progress, stage, report.stem, "cached")
         else:
+            _emit(progress, stage, report.stem, "started")
             t0 = time.monotonic()
             out_wav, out_receipt = voice_chain_mod.clean_audio(source, parts_dir, config)
             if out_receipt != clean_receipt:
                 shutil.move(str(out_receipt), str(clean_receipt))
             _record(cache, stage, key, profile_sha)
             _save_cache(cache_path, cache)
-            report.stages.append(StageOutcome(stage, "ran", time.monotonic() - t0))
+            elapsed = time.monotonic() - t0
+            report.stages.append(StageOutcome(stage, "ran", elapsed))
+            _emit(progress, stage, report.stem, "finished", elapsed)
 
     report.loudness_after_clean = _loudness_after_clean(clean_receipt, clean_wav, config, measure=not dry_run)
 
@@ -237,6 +270,7 @@ def run_part(
 
     # --- plan-pauses ---
     stage = "plan-pauses"
+    _check_cancel(should_cancel)
     plan_path = part_dir / "plan.json"
     report.plan_path = plan_path
     pauses_reran = False
@@ -244,6 +278,7 @@ def run_part(
         if not plan_path.is_file():
             raise RunError(f"--skip plan-pauses requested but {plan_path} does not exist yet")
         report.stages.append(StageOutcome(stage, "skipped"))
+        _emit(progress, stage, report.stem, "skipped")
     else:
         key = _hash_files(clean_wav) if clean_wav.is_file() else "missing"
         if dry_run:
@@ -251,23 +286,29 @@ def run_part(
             report.stages.append(StageOutcome(stage, status))
         elif _cache_hit(cache, stage, key, profile_sha, [plan_path]):
             report.stages.append(StageOutcome(stage, "cached"))
+            _emit(progress, stage, report.stem, "cached")
         else:
+            _emit(progress, stage, report.stem, "started")
             t0 = time.monotonic()
             pause_plan = build_pause_plan(clean_wav, config)
             plan_mod.save_plan(pause_plan, plan_path)
             _record(cache, stage, key, profile_sha)
             _save_cache(cache_path, cache)
-            report.stages.append(StageOutcome(stage, "ran", time.monotonic() - t0))
+            elapsed = time.monotonic() - t0
+            report.stages.append(StageOutcome(stage, "ran", elapsed))
+            _emit(progress, stage, report.stem, "finished", elapsed)
             pauses_reran = True
 
     # --- transcribe ---
     stage = "transcribe"
+    _check_cancel(should_cancel)
     transcript_path = part_dir / "transcript.json"
     report.transcript_path = transcript_path
     if stage in skip:
         if not transcript_path.is_file():
             raise RunError(f"--skip transcribe requested but {transcript_path} does not exist yet")
         report.stages.append(StageOutcome(stage, "skipped"))
+        _emit(progress, stage, report.stem, "skipped")
     else:
         # The transcript depends on the model as much as on the audio, so
         # `--model medium` after a `--model small` run must not reuse it.
@@ -277,7 +318,9 @@ def run_part(
             report.stages.append(StageOutcome(stage, status))
         elif _cache_hit(cache, stage, key, profile_sha, [transcript_path]):
             report.stages.append(StageOutcome(stage, "cached"))
+            _emit(progress, stage, report.stem, "cached")
         else:
+            _emit(progress, stage, report.stem, "started")
             t0 = time.monotonic()
             data = transcribe_mod.transcribe_audio(clean_wav, model_size=model_size, config=config)
             transcribe_mod.save_transcript(data, transcript_path)
@@ -285,12 +328,16 @@ def run_part(
             transcribe_mod.write_markdown(data["segments"], part_dir / "transcript.md")
             _record(cache, stage, key, profile_sha, {"language": data.get("language"), "model_size": model_size})
             _save_cache(cache_path, cache)
-            report.stages.append(StageOutcome(stage, "ran", time.monotonic() - t0))
+            elapsed = time.monotonic() - t0
+            report.stages.append(StageOutcome(stage, "ran", elapsed))
+            _emit(progress, stage, report.stem, "finished", elapsed)
 
     # --- plan-fillers ---
     stage = "plan-fillers"
+    _check_cancel(should_cancel)
     if stage in skip:
         report.stages.append(StageOutcome(stage, "skipped"))
+        _emit(progress, stage, report.stem, "skipped")
     else:
         key = _hash_files(clean_wav, transcript_path) if clean_wav.is_file() and transcript_path.is_file() else "missing"
         # plan-fillers merges into plan.json, so its key cannot include that
@@ -301,7 +348,9 @@ def run_part(
             report.stages.append(StageOutcome(stage, status))
         elif not pauses_reran and _cache_hit(cache, stage, key, profile_sha, [plan_path]):
             report.stages.append(StageOutcome(stage, "cached"))
+            _emit(progress, stage, report.stem, "cached")
         else:
+            _emit(progress, stage, report.stem, "started")
             t0 = time.monotonic()
             transcript_data = transcribe_mod.load_transcript(transcript_path)
             words = transcribe_mod.words_from_transcript(transcript_data)
@@ -319,10 +368,13 @@ def run_part(
             plan_mod.save_plan(edit_plan, plan_path)
             _record(cache, stage, key, profile_sha, {"candidates": len(candidates)})
             _save_cache(cache_path, cache)
-            report.stages.append(StageOutcome(stage, "ran", time.monotonic() - t0))
+            elapsed = time.monotonic() - t0
+            report.stages.append(StageOutcome(stage, "ran", elapsed))
+            _emit(progress, stage, report.stem, "finished", elapsed)
 
     # --- audit ---
     stage = "audit"
+    _check_cancel(should_cancel)
     key = _hash_files(plan_path, clean_wav)
     if dry_run:
         status = "cached" if _cache_hit(cache, stage, key, profile_sha, []) else "planned"
@@ -332,7 +384,9 @@ def run_part(
         report.seconds_removed = cached_extra["seconds_removed"]
         report.disabled_filler_proposals = cached_extra["disabled_filler_proposals"]
         report.stages.append(StageOutcome(stage, "cached"))
+        _emit(progress, stage, report.stem, "cached")
     else:
+        _emit(progress, stage, report.stem, "started")
         t0 = time.monotonic()
         loaded_plan = plan_mod.load_plan(plan_path)
         audit_result = audit_mod.audit_plan(loaded_plan, clean_wav)
@@ -349,10 +403,13 @@ def run_part(
             "disabled_filler_proposals": report.disabled_filler_proposals,
         })
         _save_cache(cache_path, cache)
-        report.stages.append(StageOutcome(stage, "ran", time.monotonic() - t0))
+        elapsed = time.monotonic() - t0
+        report.stages.append(StageOutcome(stage, "ran", elapsed))
+        _emit(progress, stage, report.stem, "finished", elapsed)
 
     # --- apply ---
     stage = "apply"
+    _check_cancel(should_cancel)
     edited_wav = part_dir / f"{source.stem}.edited.wav"
     receipt_path = part_dir / "receipt.json"
     report.edited_wav = edited_wav
@@ -360,6 +417,7 @@ def run_part(
         if not edited_wav.is_file():
             raise RunError(f"--skip apply requested but {edited_wav} does not exist yet")
         report.stages.append(StageOutcome(stage, "skipped"))
+        _emit(progress, stage, report.stem, "skipped")
     else:
         key = _hash_files(plan_path, clean_wav)
         if dry_run:
@@ -367,7 +425,9 @@ def run_part(
             report.stages.append(StageOutcome(stage, status))
         elif _cache_hit(cache, stage, key, profile_sha, [edited_wav, receipt_path]):
             report.stages.append(StageOutcome(stage, "cached"))
+            _emit(progress, stage, report.stem, "cached")
         else:
+            _emit(progress, stage, report.stem, "started")
             t0 = time.monotonic()
             loaded_plan = plan_mod.load_plan(plan_path)
             nested_output = apply_mod.apply_plan(loaded_plan, clean_wav, part_dir, config)
@@ -377,7 +437,9 @@ def run_part(
             receipts_mod.write_receipt(loaded_plan, clean_wav, plan_path, edited_wav, part_dir, config)
             _record(cache, stage, key, profile_sha)
             _save_cache(cache_path, cache)
-            report.stages.append(StageOutcome(stage, "ran", time.monotonic() - t0))
+            elapsed = time.monotonic() - t0
+            report.stages.append(StageOutcome(stage, "ran", elapsed))
+            _emit(progress, stage, report.stem, "finished", elapsed)
 
     return report
 
@@ -400,6 +462,8 @@ def run_episode(
     skip: list[str] | None = None,
     force: bool = False,
     dry_run: bool = False,
+    progress: Optional[ProgressFn] = None,
+    should_cancel: Optional[Callable[[], bool]] = None,
 ) -> RunReport:
     episode_yaml = Path(episode_yaml)
     if not episode_yaml.is_file():
@@ -431,13 +495,19 @@ def run_episode(
 
     edited_parts: list[Path] = []
     for part in manifest.parts:
+        _check_cancel(should_cancel)
         source = assemble_mod._resolve(part, base_dir)
-        part_report = run_part(source, parts_dir, config, profile_sha, model_size, skip_set, force, dry_run)
+        part_report = run_part(
+            source, parts_dir, config, profile_sha, model_size, skip_set, force, dry_run,
+            progress=progress, should_cancel=should_cancel,
+        )
         report.parts.append(part_report)
         edited_parts.append(part_report.edited_wav or source)
 
+    _check_cancel(should_cancel)
     if "assemble" in skip_set:
         report.assemble_stage = StageOutcome("assemble", "skipped")
+        _emit(progress, "assemble", None, "skipped")
         return report
 
     all_edited_ready = all(p.is_file() for p in edited_parts)
@@ -467,6 +537,7 @@ def run_episode(
     t0 = time.monotonic()
     if _cache_hit(episode_cache, "assemble", key, profile_sha, [expected_mp3, expected_receipt]):
         report.assemble_stage = StageOutcome("assemble", "cached")
+        _emit(progress, "assemble", None, "cached")
         with open(expected_receipt, encoding="utf-8") as fh:
             receipt = json.load(fh)
         report.assemble_result = {
@@ -476,14 +547,17 @@ def run_episode(
             "loudness": receipt["loudness"],
         }
     else:
+        _emit(progress, "assemble", None, "started")
         result = assemble_mod.assemble_from_manifest(
             run_manifest, base_dir, episode_root, config,
             manifest_record={"path": str(episode_yaml), "sha256": audit_mod.sha256_of_file(episode_yaml)},
         )
         _record(episode_cache, "assemble", key, profile_sha)
         _save_cache(episode_cache_path, episode_cache)
-        report.assemble_stage = StageOutcome("assemble", "ran", time.monotonic() - t0)
+        elapsed = time.monotonic() - t0
+        report.assemble_stage = StageOutcome("assemble", "ran", elapsed)
         report.assemble_result = result
+        _emit(progress, "assemble", None, "finished", elapsed)
 
     return report
 
