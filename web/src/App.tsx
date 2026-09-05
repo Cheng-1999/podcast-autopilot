@@ -9,6 +9,7 @@ import { NewEpisodePage } from "./pages/NewEpisodePage";
 import { ClipsPage } from "./pages/ClipsPage";
 import { ReviewPage } from "./pages/ReviewPage";
 import { DeliverablesPage } from "./pages/DeliverablesPage";
+import { confirmNavigation } from "./lib/navigationGuard";
 import type { EpisodeSummary } from "./api/types";
 
 export const App: React.FC = () => {
@@ -58,7 +59,7 @@ export const App: React.FC = () => {
       if (prev.key === "g" && e.key === "e" && now - prev.time < 1000) {
         e.preventDefault();
         lastKeyRef.current = { key: "", time: 0 };
-        if (location.pathname !== "/episodes") {
+        if (location.pathname !== "/episodes" && confirmNavigation()) {
           navigate("/episodes");
         }
         return;

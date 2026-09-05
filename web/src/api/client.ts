@@ -57,16 +57,24 @@ export function fetchPlan(episodeId: string, partId: string): Promise<PlanRespon
   return jsonRequest(`${API_BASE}/episodes/${encodeURIComponent(episodeId)}/parts/${encodeURIComponent(partId)}/plan`);
 }
 
-export function putPlan(
+export async function putPlan(
   episodeId: string,
   partId: string,
   flags: Array<{ id: string; enabled: boolean }>
 ): Promise<PlanPutResult> {
-  return jsonRequest(`${API_BASE}/episodes/${encodeURIComponent(episodeId)}/parts/${encodeURIComponent(partId)}/plan`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(flags),
-  });
+  const resp = await fetch(
+    `${API_BASE}/episodes/${encodeURIComponent(episodeId)}/parts/${encodeURIComponent(partId)}/plan`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(flags),
+    }
+  );
+  // 422 carries a structured { ok: false, errors: string[] } body (audit
+  // failure) rather than a generic error, so parse it instead of throwing.
+  if (resp.status === 422) return resp.json();
+  if (!resp.ok) throw new Error((await resp.text()) || `${resp.status} ${resp.statusText}`);
+  return resp.json();
 }
 
 export function fetchTranscript(episodeId: string, partId: string): Promise<TranscriptResponse> {

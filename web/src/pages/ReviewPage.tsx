@@ -17,6 +17,7 @@ import { ItemList } from "../components/ItemList";
 import { TranscriptPane } from "../components/TranscriptPane";
 import { computeSecondsRemoved, computeEnabledFillerCount, computeSnippetRange } from "../lib/planMath";
 import { formatTimeTenths } from "../lib/format";
+import { registerNavigationGuard, confirmNavigation } from "../lib/navigationGuard";
 
 function partStems(episode: EpisodeDetail | undefined): string[] {
   if (!episode) return [];
@@ -193,11 +194,18 @@ export const ReviewPage: React.FC = () => {
 
   const guardedNavigate = useCallback(
     (to: string) => {
-      if (dirty && !window.confirm("有未儲存的變更，確定要離開嗎？")) return;
+      if (!confirmNavigation()) return;
       navigate(to);
     },
-    [dirty, navigate]
+    [navigate]
   );
+
+  useEffect(() => {
+    registerNavigationGuard(() =>
+      !dirty || window.confirm("有未儲存的變更，確定要離開嗎？")
+    );
+    return () => registerNavigationGuard(null);
+  }, [dirty]);
 
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
