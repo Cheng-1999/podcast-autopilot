@@ -77,6 +77,10 @@ if (Test-Path $PackageJson) {
     Write-Host "web/package.json not found, skipping frontend build (API-only)."
 }
 
+Write-Host "Bundled example manifest: generating placeholder audio if missing ..."
+& $VenvPython -m podcast_autopilot make-example --out-dir (Join-Path $RepoRoot "examples")
+if ($LASTEXITCODE -ne 0) { Write-Error "make-example failed (exit $LASTEXITCODE)."; exit 1 }
+
 $LanIp = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
     Where-Object { $_.IPAddress -notlike "127.*" -and $_.IPAddress -notlike "169.254.*" } |
     Select-Object -First 1 -ExpandProperty IPAddress

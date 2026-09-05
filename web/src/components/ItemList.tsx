@@ -103,6 +103,7 @@ export const ItemList: React.FC<ItemListProps> = ({
                     <td style={{ padding: "0 8px" }}>
                       <input
                         type="checkbox"
+                        data-testid={`item-toggle-${item.id}`}
                         checked={item.enabled}
                         onChange={(e) => {
                           e.stopPropagation();

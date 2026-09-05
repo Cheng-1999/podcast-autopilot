@@ -122,6 +122,7 @@ export const EpisodesPage: React.FC = () => {
             border: "var(--border-subtle)",
             borderRadius: "var(--radius-max)",
             backgroundColor: "var(--surface-panel)",
+            padding: "8px 12px",
             overflowX: "auto",
           }}
         >
@@ -178,6 +179,7 @@ export const EpisodesPage: React.FC = () => {
                 return (
                   <tr
                     key={ep.id}
+                    data-testid={`episode-row-${ep.id}`}
                     onClick={() => navigate(`/episodes/${ep.id}`)}
                     style={{
                       height: "var(--row-height)",
@@ -220,8 +222,8 @@ export const EpisodesPage: React.FC = () => {
                           <span
                             className="mono"
                             style={{
-                              fontSize: "10px",
-                              padding: "1px 4px",
+                              fontSize: "11px",
+                              padding: "3px 7px",
                               backgroundColor: "var(--surface-elevated)",
                               border: "var(--border-subtle)",
                               borderRadius: "var(--radius-max)",

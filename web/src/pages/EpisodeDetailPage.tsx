@@ -229,6 +229,7 @@ export const EpisodeDetailPage: React.FC = () => {
           <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
             <span className={`status-dot ${statusInfo.color}`} />
             <span
+              data-testid="episode-status"
               style={{
                 color:
                   statusInfo.color === "green"

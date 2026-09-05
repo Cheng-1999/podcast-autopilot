@@ -78,9 +78,9 @@ a:hover {
   align-items: center;
   justify-content: center;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1;
-  padding: 2px 4px;
+  padding: 4px 7px;
   background-color: var(--surface-elevated);
   border: var(--border-subtle);
   border-radius: var(--radius-max);

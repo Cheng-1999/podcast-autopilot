@@ -75,6 +75,49 @@ Per-stage wall time (seconds, from `out/ep3.local/RUN_REPORT.md`):
 - **Chapters**: the manifest only declares one chapter; real chapter times
   for the assembled timeline must be entered by hand after listening.
 
+## EP3 via the dashboard (2026-09-06, T-0009-P6)
+
+Same source recordings as the CLI run above
+(`C:\Users\a8878\OneDrive\桌面\podcast\EP3-1.wav` / `EP3-2.wav`), registered
+by path (not copied) as a new episode through `.\dashboard.ps1`'s
+new-episode form. A fresh episode id (`ep3-dashboard-run-ep03`) was used, so
+the `out/ep3.local` cache from the CLI run did not apply, as expected;
+every stage re-ran from scratch.
+
+- **Full run**: `POST /api/episodes/{id}/run`, watched via the live SSE
+  stage grid. The run's wall-clock spans several supervisor restarts (this
+  task was interrupted three times by `error_max_turns` before its budget
+  was raised — see the board history), so the raw elapsed time between
+  "clean done" for EP3-1 (05:04) and the first assembled `ep03.mp3` (06:13)
+  is not a clean perf number. The useful observation is qualitative: the
+  per-stage cache (`stage_cache.json`) meant each restart resumed at the
+  next un-cached stage instead of re-transcribing from the top — the same
+  caching that makes "Reapply" cheap also made the dashboard resilient to
+  the process being killed and restarted mid-run.
+- **Review**: opened both parts' plan/waveform. EP3-1 proposed one disabled
+  filler (`filler-0001`, `然後` p=0.88); EP3-2 proposed one disabled filler
+  (`filler-0001`, `然後` p=0.54). Left EP3-1's as-is, enabled EP3-2's via
+  `PUT /api/episodes/{id}/parts/EP3-2/plan` (200 OK, re-audited
+  `seconds_removed` 7.32s -> matches the applied edit).
+- **Reapply**: `POST /api/episodes/{id}/run` again with the same body
+  (`force: false`). Caching worked as designed — `probe` / `clean` /
+  `plan-pauses` / `transcribe` / `plan-fillers` stayed `cached` for both
+  parts, EP3-1's `audit` / `apply` stayed `cached` (its plan did not
+  change), and only EP3-2's `audit` (0.19s) and `apply` (15.80s) re-ran,
+  followed by a full `assemble` (378.89s, both parts are joined into one
+  file so any plan change forces a re-encode) - 397s wall for the whole
+  reapply job, per `RUN_REPORT.md`'s stage table.
+- **Deliverables**: `GET /api/episodes/{id}/deliverables` lists `ep03.mp3`;
+  verified it plays by decoding it with `ffprobe` rather than a manual
+  listen through the UI (this task ran headless) - 2426.8s (~40.4 min),
+  96 kbps mono, -17.4 LUFS / -1.6 dBTP, ID3 tags (`title`/`artist`/`album`/
+  `comment`) correctly populated from the episode manifest's `tags`.
+- Quality observations carry over from the CLI run above: filler proposals
+  are still conservative (one per part, both borderline probability), and
+  EP3-1's transcript still needs proof-reading before publishing (see the
+  CLI run's note on the `１` hallucination — not re-checked here since the
+  transcript stage was cached and unchanged from that run).
+
 ## Fresh-clone smoke run (bundled example)
 
 `git clone` into a temp dir, then `.\run.ps1 examples\episode.example.yaml`

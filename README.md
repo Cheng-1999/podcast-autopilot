@@ -155,17 +155,39 @@ python -m podcast_autopilot clips "路徑\到\你的錄音.wav" --render
 實際用到的 `--config` 檔與 `--skip` 全部釘死，確保重跑的是同一份設定與
 同一個輸出目錄）。
 
-## Streamlit 介面
+## Dashboard（推薦）
+
+網頁版介面，取代 Streamlit 成為推薦的日常操作方式：
 
 ```powershell
-.venv\Scripts\python -m streamlit run app.py
+.\dashboard.ps1
+.\dashboard.ps1 -Port 9000 -NoBrowser
 ```
 
-單頁工具（無自訂樣式）：選 `episode.yaml`、按「Run」執行整條 pipeline、
-直接讀取並顯示 `RUN_REPORT.md`、每個 part 的 plan items 列成勾選框
-（勾掉代表 `enabled: false`）、按「Save changes」寫回對應的
-`plan.json`，以及「Apply again」按鈕重跑整條指令（靠上面的快取機制，
-只有真的被改動的 part 會重新 `audit`／`apply`，接著重新 `assemble`）。
+第一次執行會自動建立 `.venv`、安裝 Python 依賴、檢查 ffmpeg/ffprobe，接著
+（若 `web/` 存在且 `web/dist` 不是最新的）用 `npm ci && npm run build` 建置
+前端，最後用 uvicorn 把 FastAPI 後端（所有路由在 `/api/*` 下）跟建置好的 SPA
+一起 serve 在同一個 port（預設 8765）。需要 **Node 20+**（`web/` 的工具鏈是
+Vite 6 + React 19 + TypeScript）。
+
+- 網頁流程：episodes 列表 → 新增 episode 精靈（用路徑註冊音檔或上傳，路徑註冊
+  不會複製檔案）→ 啟動 run、透過 SSE 即時看每個 stage 的進度 → review 畫面看
+  波形、逐項勾選 pause/filler 提案、單獨試聽片段、存檔（存檔前會重新
+  `audit`，沒過會顯示在該項目下方）→ Reapply（沿用 stage cache，只有真的被
+  改動的 part 會重新 `audit`／`apply`，再重新 `assemble`）→ Deliverables 頁面
+  播放最終 mp3、瀏覽並下載 clips。
+- **區網存取、沒有身分驗證**：uvicorn bind 在 `0.0.0.0`，同一區網的其他裝置
+  可以用終端機印出的 LAN IP 連進來操作；不要把這個 port 對外網開放，也不要在
+  不信任的網路上開著跑。
+- `-Port <n>`：換一個 port（例如本機 8765 已被別的服務占用時）。
+  `-NoBrowser`：啟動後不要自動開瀏覽器分頁。
+- **取消一個 run**：畫面上的 Cancel 呼叫 `POST /api/jobs/{id}/cancel`，只在
+  stage 與 stage 之間檢查取消旗標（不會中斷正在跑的單一 ffmpeg/whisper 呼叫），
+  已經快取住的 stage 輸出不會被丟掉，之後重新 Run 會從快取繼續。
+- 畫面截圖在 `web/screenshots/`（episodes 列表、新增精靈、即時 run 進度、
+  review 畫面、clips 表格、deliverables 頁，各附桌面／手機寬度）。
+- 舊的單頁 Streamlit 介面還在，但功能是 Dashboard 的子集，不再是推薦的操作
+  方式：`.venv\Scripts\python -m streamlit run app.py`。
 
 ## Profile 設定值
 
@@ -376,13 +398,47 @@ generate synthetic tone+noise audio for them, so the one-command run works
 right after a fresh clone with no real recording needed. Copy the YAML and
 point `parts` at your own audio to use it for real.
 
-### Streamlit app
+### Dashboard (recommended)
 
-`.venv\Scripts\python -m streamlit run app.py` — pick an `episode.yaml`,
-click Run, read the rendered `RUN_REPORT.md`, review every part's plan
-items as checkboxes (unchecked = `enabled: false`), save changes back to
-`plan.json`, and re-run with "Apply again" (same caching as above, so only
-the parts you actually changed re-render).
+A web UI that replaces Streamlit as the recommended day-to-day way to use
+the tool:
+
+```powershell
+.\dashboard.ps1
+.\dashboard.ps1 -Port 9000 -NoBrowser
+```
+
+First run creates/updates `.venv`, installs Python dependencies, checks
+ffmpeg/ffprobe, then (if `web/` exists and `web/dist` is stale) builds the
+frontend with `npm ci && npm run build`, and finally serves the FastAPI
+backend (all routes under `/api/*`) and the built SPA together with
+uvicorn on one port (default 8765). Requires **Node 20+** (the `web/`
+toolchain is Vite 6 + React 19 + TypeScript).
+
+- Flow: episodes list -> new-episode wizard (register a file by path or
+  upload it; registering by path never copies the source) -> start a run
+  and watch per-stage SSE progress -> review screen (waveform, per-item
+  pause/filler toggles with inline `422` audit errors if a save fails,
+  snippet playback, save) -> Reapply (same caching as the CLI: only the
+  parts you actually changed re-`audit`/`apply`, then `assemble` re-runs if
+  the rendered audio changed) -> Deliverables screen to play the final MP3
+  and browse/download clips.
+- **LAN-reachable, no authentication**: uvicorn binds `0.0.0.0`, so other
+  devices on the same network can reach it at the LAN IP printed at
+  startup. Do not expose this port to the internet or run it on an
+  untrusted network.
+- `-Port <n>` picks a different port (e.g. if 8765 is already taken by
+  something else). `-NoBrowser` skips auto-opening a browser tab.
+- **Cancelling a run**: the UI's Cancel button calls
+  `POST /api/jobs/{id}/cancel`, which is checked between pipeline stages
+  only (it does not interrupt an in-flight ffmpeg/whisper call); stage
+  outputs already cached are kept, so a subsequent Run resumes from cache.
+- Screenshots in `web/screenshots/` (episodes list, new-episode wizard,
+  live run progress, review screen, clips table, deliverables screen, each
+  at desktop and mobile widths).
+- The old single-page Streamlit app is still there but is a functional
+  subset of the dashboard, no longer the recommended way to use the tool:
+  `.venv\Scripts\python -m streamlit run app.py`.
 
 ### Profile keys
 

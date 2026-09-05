@@ -77,13 +77,14 @@ export const RunReportView: React.FC<RunReportViewProps> = ({ content }) => {
           font-weight: 600;
           color: var(--text-primary);
         }
-        .run-report-container h1 { font-size: 16px; border-bottom: var(--border-subtle); padding-bottom: 4px; }
+        .run-report-container h1 { font-size: 19px; border-bottom: var(--border-subtle); padding-bottom: 4px; }
         .run-report-container h2 { font-size: 14px; color: var(--semantic-blue); }
         .run-report-container h3 { font-size: 13px; }
         .run-report-container p,
         .run-report-container ul,
         .run-report-container ol {
           margin-bottom: 10px;
+          max-width: 65ch;
         }
         .run-report-container ul,
         .run-report-container ol {
@@ -116,6 +117,7 @@ export const RunReportView: React.FC<RunReportViewProps> = ({ content }) => {
           padding: 2px 4px;
           border-radius: var(--radius-max);
           border: var(--border-subtle);
+          overflow-wrap: anywhere;
         }
         .run-report-container pre {
           background-color: #0F1216;
@@ -124,6 +126,8 @@ export const RunReportView: React.FC<RunReportViewProps> = ({ content }) => {
           padding: 10px 12px;
           overflow-x: auto;
           margin: 10px 0;
+          white-space: pre-wrap;
+          word-break: break-word;
         }
         .run-report-container pre code {
           background-color: transparent;

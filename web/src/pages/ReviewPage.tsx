@@ -337,7 +337,7 @@ export const ReviewPage: React.FC = () => {
           啟用贅字: {fillerCount} ‧ 預計移除: {secondsRemoved.toFixed(1)}s / {formatTimeTenths(duration)}
         </div>
         <div style={{ display: "flex", gap: "6px" }}>
-          <button type="button" className="dense-btn" disabled={!dirty || saveState === "saving"} onClick={doSave}>
+          <button type="button" data-testid="save-plan-button" className="dense-btn" disabled={!dirty || saveState === "saving"} onClick={doSave}>
             儲存 <span className="kbd-hint">s</span>
           </button>
           <button type="button" className="dense-btn primary" disabled={saveState === "saving"} onClick={doReapply}>

@@ -178,6 +178,7 @@ export const RunControls: React.FC<RunControlsProps> = ({
       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
         <button
           type="button"
+          data-testid="run-button"
           className="dense-btn primary"
           onClick={handleRun}
           disabled={isRunning}
