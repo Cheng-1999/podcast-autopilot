@@ -477,7 +477,19 @@ def get_clips(episode_id: str, part_id: str, request: Request) -> dict:
     clips_path = part_dir / "clips.json"
     if not clips_path.is_file():
         raise HTTPException(404, "clips.json not found; run clips first")
-    return json.loads(clips_path.read_text(encoding="utf-8"))
+    data = json.loads(clips_path.read_text(encoding="utf-8"))
+    clips_dir = part_dir / "clips"
+    for candidate in data.get("candidates", []):
+        raw_id = str(candidate.get("id", ""))
+        match = re.search(r"(?:clip-)?0*(\d+)$", raw_id)
+        rank = match.group(1) if match else raw_id
+        mp3 = clips_dir / f"{rank}.mp3"
+        srt = clips_dir / f"{rank}.srt"
+        candidate["rendered"] = {
+            "mp3": media_mod.to_media_url(project_root, mp3) if mp3.is_file() else None,
+            "srt": media_mod.to_media_url(project_root, srt) if srt.is_file() else None,
+        }
+    return data
 
 
 class ClipsRequest(BaseModel):

@@ -253,6 +253,7 @@ def episode_summary(project_root: Path, ref: ManifestRef, job_manager=None) -> d
         "title": None,
         "episode": None,
         "parts": [],
+        "tags": {},
         "error": error,
     }
     if manifest is None:
@@ -261,6 +262,7 @@ def episode_summary(project_root: Path, ref: ManifestRef, job_manager=None) -> d
     base["title"] = manifest.title
     base["episode"] = manifest.episode
     base["parts"] = manifest.parts
+    base["tags"] = manifest.tags.model_dump()
     base.update(compute_status(project_root, ref.id, manifest, job_manager))
     return base
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useReducer, useState, useCallback, useRef } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useParams, Link, useNavigate, useLocation } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   fetchEpisode,
@@ -20,11 +20,13 @@ import type { EpisodeDetail } from "../api/types";
 export const EpisodeDetailPage: React.FC = () => {
   const { id = "" } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
 
   const [runState, dispatch] = useReducer(runStateReducer, INITIAL_RUN_STATE);
   const [isLogOpen, setIsLogOpen] = useState<boolean>(true);
   const eventSourceCleanupRef = useRef<(() => void) | null>(null);
+  const reapplyCaption = (location.state as { reapplyCaption?: string } | null)?.reapplyCaption ?? null;
 
   // Fetch episode detail
   const {
@@ -266,6 +268,9 @@ export const EpisodeDetailPage: React.FC = () => {
           <Link to={`/episodes/${id}/deliverables`} className="dense-btn">
             成品檔案
           </Link>
+          <Link to={`/episodes/${id}/clips`} className="dense-btn">
+            短片候選
+          </Link>
         </div>
       </div>
 
@@ -300,6 +305,20 @@ export const EpisodeDetailPage: React.FC = () => {
 
       {!isEpLoading && episode && (
         <>
+          {reapplyCaption && (
+            <div
+              style={{
+                padding: "8px 12px",
+                border: "1px solid rgba(76, 141, 255, 0.3)",
+                borderRadius: "var(--radius-max)",
+                backgroundColor: "rgba(76, 141, 255, 0.1)",
+                color: "var(--semantic-blue)",
+                fontSize: "var(--font-size-sm)",
+              }}
+            >
+              {reapplyCaption}
+            </div>
+          )}
           {/* Run Controls */}
           <RunControls
             profiles={profiles}

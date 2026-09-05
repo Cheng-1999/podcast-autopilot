@@ -5,7 +5,10 @@ import { fetchHealth, fetchEpisodes } from "./api/client";
 import { StatusBar } from "./components/StatusBar";
 import { EpisodesPage } from "./pages/EpisodesPage";
 import { EpisodeDetailPage } from "./pages/EpisodeDetailPage";
-import { PlaceholderPage } from "./pages/PlaceholderPage";
+import { NewEpisodePage } from "./pages/NewEpisodePage";
+import { ClipsPage } from "./pages/ClipsPage";
+import { ReviewPage } from "./pages/ReviewPage";
+import { DeliverablesPage } from "./pages/DeliverablesPage";
 import type { EpisodeSummary } from "./api/types";
 
 export const App: React.FC = () => {
@@ -92,13 +95,11 @@ export const App: React.FC = () => {
         <Routes>
           <Route path="/" element={<Navigate to="/episodes" replace />} />
           <Route path="/episodes" element={<EpisodesPage />} />
-          <Route path="/episodes/new" element={<PlaceholderPage type="wizard" />} />
+          <Route path="/episodes/new" element={<NewEpisodePage />} />
           <Route path="/episodes/:id" element={<EpisodeDetailPage />} />
-          <Route path="/episodes/:id/review" element={<PlaceholderPage type="review" />} />
-          <Route
-            path="/episodes/:id/deliverables"
-            element={<PlaceholderPage type="deliverables" />}
-          />
+          <Route path="/episodes/:id/review" element={<ReviewPage />} />
+          <Route path="/episodes/:id/clips" element={<ClipsPage />} />
+          <Route path="/episodes/:id/deliverables" element={<DeliverablesPage />} />
           <Route path="*" element={<Navigate to="/episodes" replace />} />
         </Routes>
       </main>
