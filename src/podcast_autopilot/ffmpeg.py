@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -58,6 +59,25 @@ def measure_loudness(path: Path, config: AppConfig | None = None) -> dict:
     if result.returncode != 0:
         raise FFmpegError(f"loudnorm measure failed for {path}: {result.stderr.strip()}")
     return _parse_loudnorm_json(result.stderr)
+
+
+def measure_mean_volume(path: Path, start: float, duration: float, config: AppConfig | None = None) -> float:
+    """Mean volume in dBFS of a cropped window, via the volumedetect filter."""
+    ffmpeg, _ = resolve_ffmpeg_binaries(config)
+    cmd = [
+        str(ffmpeg), "-hide_banner", "-nostats",
+        "-ss", f"{start:.6f}", "-t", f"{duration:.6f}",
+        "-i", str(path),
+        "-af", "volumedetect",
+        "-f", "null", "-",
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise FFmpegError(f"volumedetect failed for {path}: {result.stderr.strip()}")
+    match = re.search(r"mean_volume:\s*(-?\d+(?:\.\d+)?) dB", result.stderr)
+    if not match:
+        raise FFmpegError(f"volumedetect produced no mean_volume for {path}")
+    return float(match.group(1))
 
 
 def ffmpeg_version(config: AppConfig | None = None) -> str:

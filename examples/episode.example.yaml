@@ -1,0 +1,39 @@
+# Copy this file, point `parts` at your cleaned+pause-applied part WAVs, and
+# run: python -m podcast_autopilot assemble examples/episode.example.yaml
+# Paths below are relative to this file's directory unless absolute.
+
+title: "Episode 3"
+episode: 3
+
+parts:
+  - EP3-1.wav
+  - EP3-2.wav
+
+# Optional: crossfaded 1.0s into/out of the joined parts.
+intro: null
+outro: null
+
+# Optional: background music, sidechain-ducked under the voice.
+bgm: null
+# bgm:
+#   path: bgm.wav
+#   gain_db: -18
+#   duck:
+#     threshold: 0.03
+#     ratio: 8
+#     attack: 5
+#     release: 300
+
+# Chapter markers on the final assembled timeline ("mm:ss" or "hh:mm:ss").
+chapters:
+  - start: "00:00"
+    title: "Intro"
+  - start: "05:00"
+    title: "Main topic"
+
+tags:
+  artist: "Podcast Host"
+  album: "Podcast Name"
+  year: 2026
+  genre: "Podcast"
+  comment: "Assembled by podcast-autopilot"
