@@ -5,11 +5,12 @@
 """
 from __future__ import annotations
 
+import contextvars
 import queue
+import sys
 import threading
 import time
 import uuid
-from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -90,6 +91,56 @@ class _TeeWriter:
 
     def flush(self) -> None:
         self._file.flush()
+
+
+# stdout/stderr are process globals, so contextlib.redirect_* is unsafe here:
+# a timed-out job can remain alive after the queue starts another job.  These
+# proxies route writes by execution context instead, allowing both job threads
+# to exist without either one changing the other's stream destination.
+_stdout_writer: contextvars.ContextVar[Optional[_TeeWriter]] = contextvars.ContextVar(
+    "dashboard_stdout_writer", default=None
+)
+_stderr_writer: contextvars.ContextVar[Optional[_TeeWriter]] = contextvars.ContextVar(
+    "dashboard_stderr_writer", default=None
+)
+
+
+class _JobOutputProxy:
+    def __init__(self, fallback, writer: contextvars.ContextVar[Optional[_TeeWriter]]):
+        self._fallback = fallback
+        self._writer = writer
+
+    def write(self, text: str) -> int:
+        writer = self._writer.get()
+        return writer.write(text) if writer is not None else self._fallback.write(text)
+
+    def flush(self) -> None:
+        writer = self._writer.get()
+        if writer is not None:
+            writer.flush()
+        else:
+            self._fallback.flush()
+
+    def __getattr__(self, name):
+        return getattr(self._fallback, name)
+
+
+_output_proxy_lock = threading.Lock()
+_output_proxies_installed = False
+
+
+def _install_output_proxies() -> None:
+    global _output_proxies_installed
+    with _output_proxy_lock:
+        if _output_proxies_installed:
+            return
+        # Use the interpreter-owned streams as stable fallbacks.  In tests and
+        # hosted servers, sys.stdout may be temporarily replaced and later
+        # closed; retaining that object here would make later non-job writes
+        # fail after the replacement ends.
+        sys.stdout = _JobOutputProxy(sys.__stdout__, _stdout_writer)
+        sys.stderr = _JobOutputProxy(sys.__stderr__, _stderr_writer)
+        _output_proxies_installed = True
 
 
 class Job:
@@ -202,6 +253,7 @@ class JobManager:
     """Single background worker: jobs are processed strictly one at a time."""
 
     def __init__(self) -> None:
+        _install_output_proxies()
         self._jobs: dict[str, Job] = {}
         self._queue: "queue.Queue[str]" = queue.Queue()
         self._lock = threading.Lock()
@@ -396,7 +448,9 @@ class JobManager:
         try:
             with open(job.log_path, "w", encoding="utf-8") as logf:
                 tee_out, tee_err = _TeeWriter(logf, job), _TeeWriter(logf, job)
-                with redirect_stdout(tee_out), redirect_stderr(tee_err):
+                stdout_token = _stdout_writer.set(tee_out)
+                stderr_token = _stderr_writer.set(tee_err)
+                try:
                     if job.kind == "clips":
                         _run_clips_job(job)
                     else:
@@ -413,6 +467,9 @@ class JobManager:
                             should_cancel=lambda: job.cancel_requested,
                         )
                         run_mod.write_run_report(report, report.episode_root / "RUN_REPORT.md")
+                finally:
+                    _stdout_writer.reset(stdout_token)
+                    _stderr_writer.reset(stderr_token)
         except run_mod.CancelledError:
             job.finish_if_active("cancelled", event="job_cancelled")
         except (run_mod.RunError, assemble_mod.AssembleError, voice_chain_mod.VoiceChainError) as exc:

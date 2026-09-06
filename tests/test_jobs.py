@@ -149,6 +149,58 @@ def test_stuck_job_times_out_and_frees_the_queue(manager, tmp_path, monkeypatch)
         time.sleep(0.05)
 
 
+def test_timed_out_job_cannot_steal_next_job_log_stream(manager, tmp_path, monkeypatch):
+    """A timed-out thread may keep printing while the next job starts.
+
+    Its output must remain in its own log, rather than being redirected into
+    the newer job or restoring a stale redirect after the newer job exits.
+    """
+    monkeypatch.setattr(jobs_mod, "JOB_TIMEOUT_S", 0.2)
+    release = threading.Event()
+    call_count = {"n": 0}
+
+    def fake_run_episode(*args, **kwargs):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            print("old-job-before-timeout")
+            release.wait(10)
+            print("old-job-after-timeout")
+            raise jobs_mod.run_mod.CancelledError("released")
+        print("new-job-output")
+        raise jobs_mod.run_mod.CancelledError("done")
+
+    monkeypatch.setattr(jobs_mod.run_mod, "run_episode", fake_run_episode)
+    old_job = _submit(manager, "old-ep", tmp_path)
+    for _ in range(100):
+        if old_job.status == "failed":
+            break
+        time.sleep(0.05)
+    assert old_job.status == "failed"
+
+    new_job = _submit(manager, "new-ep", tmp_path)
+    for _ in range(100):
+        if new_job.is_terminal():
+            break
+        time.sleep(0.05)
+    assert new_job.status == "cancelled"
+
+    release.set()
+    for _ in range(100):
+        old_log = tmp_path / "old-ep" / f"dashboard-job-{old_job.id}.log"
+        if old_log.exists() and "old-job-after-timeout" in old_log.read_text(encoding="utf-8"):
+            break
+        time.sleep(0.05)
+
+    old_text = old_log.read_text(encoding="utf-8")
+    new_log = tmp_path / "new-ep" / f"dashboard-job-{new_job.id}.log"
+    new_text = new_log.read_text(encoding="utf-8")
+    assert "old-job-before-timeout" in old_text
+    assert "old-job-after-timeout" in old_text
+    assert "new-job-output" not in old_text
+    assert "new-job-output" in new_text
+    assert "old-job-after-timeout" not in new_text
+
+
 def test_abandoned_thread_cannot_relock_episode_or_override_timeout_result(manager, tmp_path, monkeypatch):
     """T-0021-F1: a timed-out job's thread is abandoned, not killed, and may
     still be running when the watchdog marks the job failed. Until that
