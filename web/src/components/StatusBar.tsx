@@ -68,10 +68,10 @@ export const StatusBar: React.FC<StatusBarProps> = ({ health, activeJob }) => {
           }}
         >
           <span className="mono" style={{ color: "var(--semantic-blue)" }}>
-            AUTOPILOT
+            {t("app.brand")}
           </span>
           <span className="label-caps hide-on-mobile" style={{ color: "var(--text-muted)" }}>
-            DASHBOARD
+            {t("app.brand.sub")}
           </span>
         </Link>
 

@@ -12,6 +12,7 @@ import { StageGrid } from "../src/components/StageGrid";
 import { ItemList } from "../src/components/ItemList";
 import { TranscriptPane } from "../src/components/TranscriptPane";
 import { LogPanel } from "../src/components/LogPanel";
+import { StatusBar } from "../src/components/StatusBar";
 import { EpisodesPage } from "../src/pages/EpisodesPage";
 import type { EpisodeSummary } from "../src/api/types";
 
@@ -32,6 +33,10 @@ const FORBIDDEN_LITERALS = [
   "(STATUS)",
   "/ NEW EPISODE",
   "/ CLIPS",
+  // Note: "AUTOPILOT" is intentionally kept untranslated as a brand name in
+  // every locale's app.brand catalog entry, so it is not a useful literal to
+  // forbid here. "DASHBOARD" (app.brand.sub) does vary per locale.
+  "DASHBOARD",
 ];
 
 function makeTranslate(locale: Locale) {
@@ -146,6 +151,25 @@ describe("representative component rendering across locales", () => {
       );
       assertClean(html, missing, locale);
       expect(html).toContain(getMessage(locale, "log.heading"));
+    });
+
+    it(`renders StatusBar in ${locale} without missing keys`, () => {
+      const { html, missing } = renderWithLocale(
+        locale,
+        React.createElement(StatusBar, {
+          health: {
+            ffmpeg: "/usr/bin/ffmpeg",
+            ffprobe: "/usr/bin/ffprobe",
+            ffmpeg_ok: true,
+            whisper_models: { small: true, medium: false },
+            free_disk_gb: 42,
+          },
+          activeJob: null,
+        })
+      );
+      assertClean(html, missing, locale);
+      expect(html).toContain(getMessage(locale, "app.brand"));
+      expect(html).toContain(getMessage(locale, "app.brand.sub"));
     });
 
     it(`renders EpisodesPage in ${locale} without missing keys`, () => {
