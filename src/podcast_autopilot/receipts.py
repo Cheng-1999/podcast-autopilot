@@ -42,7 +42,11 @@ def write_receipt(
             "sha256": sha256_of_file(output_path),
         },
         "edit": {
-            "seconds_removed": sum(item.end - item.start for item in plan.items if item.enabled and item.kind == "cut"),
+            "seconds_removed": sum(
+                item.end - item.start
+                for item in plan.items
+                if item.enabled and item.kind in ("cut", "filler")
+            ),
             "predicted_duration": plan.predicted_duration,
         },
         "ffmpeg_version": ffmpeg_version(config),

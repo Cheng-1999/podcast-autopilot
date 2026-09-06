@@ -89,8 +89,8 @@ def apply_plan(plan: EditPlan, audio_path: Path, out_dir: Path, config: AppConfi
             keep_items.append(PlanItem(id=f"derived-{len(keep_items)}", kind="keep", start=cursor, end=plan.source.duration))
     else:
         keep_items = sorted((item for item in plan.items if item.enabled and item.kind == "keep"), key=lambda it: it.start)
-    if not keep_items:
-        raise ValueError("plan has no enabled 'keep' items to render")
+        if not keep_items:
+            keep_items = [PlanItem(id="derived-0", kind="keep", start=0.0, end=plan.source.duration)]
 
     filler_items = [item for item in plan.items if item.kind == "filler"]
     segments = _carve_filler_cuts(keep_items, filler_items)
