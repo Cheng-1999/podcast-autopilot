@@ -41,7 +41,13 @@ if (-not (Test-PortFree -Port $Port)) {
     } catch {
         $existing = $null
     }
-    if ($existing) {
+    # An unrelated HTTP service on this port could still answer with a truthy
+    # 200 body (e.g. "{}"). Only treat it as our dashboard if it has the
+    # fields our own /api/health always returns.
+    $isOurDashboard = $existing -and
+        ($existing.PSObject.Properties.Name -contains "ffmpeg_ok") -and
+        ($existing.PSObject.Properties.Name -contains "whisper_models")
+    if ($isOurDashboard) {
         Write-Host "A podcast-autopilot dashboard is already running on port $Port -- reusing it."
         if (-not $NoBrowser) {
             Start-Process "http://localhost:$Port"
