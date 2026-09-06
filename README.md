@@ -413,6 +413,13 @@ point `parts` at your own audio to use it for real.
 
 ### Dashboard (recommended)
 
+For one-click startup on Windows, double-click [`start-dashboard.bat`](start-dashboard.bat).
+It runs the complete setup flow below (virtual environment, Python dependencies,
+FFmpeg check, frontend build, and sample assets), then opens the dashboard at
+<http://localhost:8766>. Keep the command window open while using the dashboard;
+close it or press `Ctrl+C` to stop the server. If port 8766 is already in use,
+run `dashboard.ps1` manually with another port.
+
 A web UI that replaces Streamlit as the recommended day-to-day way to use
 the tool:
 
