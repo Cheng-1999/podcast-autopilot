@@ -175,6 +175,9 @@ def plan_fillers(
         filler_words=config.filler_words,
         pause_threshold_s=config.filler_pause_threshold_s,
         min_probability=config.filler_min_probability,
+        pre_roll_s=config.filler_pre_roll_s,
+        post_roll_s=config.filler_post_roll_s,
+        audio_path=audio_path,
     )
 
     source_info = probe_mod.probe_audio(audio_path, config)

@@ -21,7 +21,12 @@ class _RenderSegment:
     fade_before: bool = False
 
 
-def _carve_filler_cuts(keep_items: list[PlanItem], filler_items: list[PlanItem]) -> list[_RenderSegment]:
+def _carve_filler_cuts(
+    keep_items: list[PlanItem],
+    filler_items: list[PlanItem],
+    padding_start_s: float = 0.0,
+    padding_end_s: float = 0.0,
+) -> list[_RenderSegment]:
     """Cut enabled filler items out of the keep items that contain them.
 
     audit_plan() already guarantees every filler item lies fully inside some
@@ -34,10 +39,12 @@ def _carve_filler_cuts(keep_items: list[PlanItem], filler_items: list[PlanItem])
         fade_before = False
         inside = [f for f in enabled_fillers if f.start >= keep.start and f.end <= keep.end]
         for filler in inside:
-            if filler.start > cursor:
-                segments.append(_RenderSegment(cursor, filler.start, fade_before=fade_before))
+            cut_start = max(cursor, filler.start - padding_start_s)
+            cut_end = min(keep.end, filler.end + padding_end_s)
+            if cut_start > cursor:
+                segments.append(_RenderSegment(cursor, cut_start, fade_before=fade_before))
                 fade_before = True
-            cursor = max(cursor, filler.end)
+            cursor = max(cursor, cut_end)
         if keep.end > cursor:
             segments.append(_RenderSegment(cursor, keep.end, fade_before=fade_before))
     return segments
@@ -93,7 +100,11 @@ def apply_plan(plan: EditPlan, audio_path: Path, out_dir: Path, config: AppConfi
             keep_items = [PlanItem(id="derived-0", kind="keep", start=0.0, end=plan.source.duration)]
 
     filler_items = [item for item in plan.items if item.kind == "filler"]
-    segments = _carve_filler_cuts(keep_items, filler_items)
+    padding_start = getattr(config, "filler_carve_padding_start_s", 0.0) if config else 0.0
+    padding_end = getattr(config, "filler_carve_padding_end_s", 0.0) if config else 0.0
+    segments = _carve_filler_cuts(
+        keep_items, filler_items, padding_start_s=padding_start, padding_end_s=padding_end
+    )
     if not segments:
         raise ValueError("plan has no audio left to render after filler cuts")
 

@@ -204,11 +204,82 @@ def write_markdown(segments: list[Segment], path: Path) -> None:
     Path(path).write_text("\n\n".join(paragraphs) + ("\n" if paragraphs else ""), encoding="utf-8")
 
 
+def find_energy_bounds(
+    audio_path: Path | str,
+    search_start: float,
+    search_end: float,
+    word_start: float,
+    word_end: float,
+    min_silence_rms: float = 0.01,
+) -> tuple[float, float]:
+    """Snap word boundaries to acoustic speech onset and offset when audio is available.
+
+    Whisper word-level alignment often lags true acoustic speech onset (especially
+    on multi-syllable Chinese particles like '然後' or words following pauses).
+    This inspects the RMS energy within the surrounding silence gap to find when
+    speech actually begins and ends.
+    """
+    try:
+        import numpy as np
+        import scipy.io.wavfile as wavfile
+
+        sr, data = wavfile.read(audio_path, mmap=True)
+        if data.ndim > 1:
+            data = data[:, 0]
+        duration = len(data) / sr
+        search_start = max(0.0, search_start)
+        search_end = min(duration, search_end)
+        if search_start >= search_end:
+            return word_start, word_end
+
+        i0 = int(search_start * sr)
+        i1 = int(search_end * sr)
+        chunk_data = np.array(data[i0:i1], dtype=np.float32)
+        win = int(0.02 * sr)
+        hop = int(0.005 * sr)
+        if len(chunk_data) < win:
+            return word_start, word_end
+
+        times = []
+        rms_vals = []
+        for idx in range(0, len(chunk_data) - win, hop):
+            w_chunk = chunk_data[idx : idx + win]
+            rms = float(np.sqrt(np.mean(w_chunk**2)))
+            times.append(search_start + idx / sr)
+            rms_vals.append(rms)
+
+        if not rms_vals:
+            return word_start, word_end
+
+        peak_rms = max(rms_vals)
+        thresh = max(min_silence_rms, 0.05 * peak_rms)
+
+        onset = word_start
+        for t, r in zip(times, rms_vals):
+            if t <= word_start and r > thresh:
+                onset = max(search_start, t - 0.02)
+                break
+
+        offset = word_end
+        for t, r in zip(reversed(times), reversed(rms_vals)):
+            if t >= word_end and r > thresh:
+                offset = min(search_end, t + win / sr + 0.02)
+                break
+
+        return round(onset, 3), round(offset, 3)
+    except Exception:
+        return word_start, word_end
+
+
 def detect_fillers(
     words: list[Word],
     filler_words: list[str] | None = None,
     pause_threshold_s: float = 0.2,
     min_probability: float = 0.5,
+    pre_roll_s: float = 0.0,
+    post_roll_s: float = 0.0,
+    guard_s: float = 0.05,
+    audio_path: Path | str | None = None,
 ) -> list[dict]:
     """Flag filler-word candidates that are isolated by pauses on both sides.
 
@@ -222,6 +293,8 @@ def detect_fillers(
     """
     filler_set = set(filler_words) if filler_words is not None else set(DEFAULT_FILLER_WORDS)
     candidates: list[dict] = []
+    has_audio = audio_path is not None and Path(audio_path).is_file()
+
     for i in range(1, len(words) - 1):
         w = words[i]
         token = w.word.strip()
@@ -233,7 +306,27 @@ def detect_fillers(
         next_gap = words[i + 1].start - w.end
         if prev_gap <= pause_threshold_s or next_gap <= pause_threshold_s:
             continue
-        candidates.append({"word": token, "start": w.start, "end": w.end, "probability": w.probability})
+
+        cand_start = max(words[i - 1].end + guard_s, w.start - pre_roll_s)
+        cand_end = min(words[i + 1].start - guard_s, w.end + post_roll_s)
+
+        if has_audio:
+            search_start = words[i - 1].end + guard_s
+            search_end = words[i + 1].start - guard_s
+            cand_start, cand_end = find_energy_bounds(
+                audio_path=audio_path,
+                search_start=search_start,
+                search_end=search_end,
+                word_start=cand_start,
+                word_end=cand_end,
+            )
+
+        candidates.append({
+            "word": token,
+            "start": round(cand_start, 3),
+            "end": round(cand_end, 3),
+            "probability": w.probability,
+        })
     return candidates
 
 
@@ -310,17 +403,24 @@ def merge_filler_items(
     return sorted(non_filler + kept + new_items, key=lambda it: it.start)
 
 
-def filler_plan_items(candidates: list[dict], start_index: int = 1) -> list[PlanItem]:
+def filler_plan_items(
+    candidates: list[dict],
+    start_index: int = 1,
+    pre_roll_s: float = 0.0,
+    post_roll_s: float = 0.0,
+) -> list[PlanItem]:
     """Build disabled 'filler' PlanItems (proposals only) from detect_fillers() output."""
     items = []
     for offset, c in enumerate(candidates):
         idx = start_index + offset
+        start = max(0.0, c["start"] - pre_roll_s)
+        end = c["end"] + post_roll_s
         items.append(
             PlanItem(
                 id=f"filler-{idx:04d}",
                 kind="filler",
-                start=c["start"],
-                end=c["end"],
+                start=round(start, 3),
+                end=round(end, 3),
                 reason=f"filler:{c['word']} p={c['probability']:.2f}",
                 enabled=False,
             )

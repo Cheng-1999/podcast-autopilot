@@ -33,6 +33,10 @@ class AppConfig:
     filler_words: list[str] = field(default_factory=lambda: list(DEFAULT_FILLER_WORDS))
     filler_pause_threshold_s: float = 0.2
     filler_min_probability: float = 0.5
+    filler_pre_roll_s: float = 0.15
+    filler_post_roll_s: float = 0.05
+    filler_carve_padding_start_s: float = 0.0
+    filler_carve_padding_end_s: float = 0.0
     denoise_engine: str = "auto"
     voice_chain: "VoiceChainConfig" = None  # type: ignore[assignment]
     clips: "ClipsConfig" = None  # type: ignore[assignment]
@@ -108,6 +112,10 @@ def load_config(config_path: Path | None = None) -> AppConfig:
         filler_words=list(data.get("filler_words", DEFAULT_FILLER_WORDS)),
         filler_pause_threshold_s=float(data.get("filler_pause_threshold_s", 0.2)),
         filler_min_probability=float(data.get("filler_min_probability", 0.5)),
+        filler_pre_roll_s=float(data.get("filler_pre_roll_s", 0.15)),
+        filler_post_roll_s=float(data.get("filler_post_roll_s", 0.05)),
+        filler_carve_padding_start_s=float(data.get("filler_carve_padding_start_s", 0.0)),
+        filler_carve_padding_end_s=float(data.get("filler_carve_padding_end_s", 0.0)),
         denoise_engine=engine,
         clips=ClipsConfig(
             keywords=list(clips.get("keywords", [])),

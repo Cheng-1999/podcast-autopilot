@@ -264,3 +264,51 @@ def test_merge_filler_items_filters_candidates_outside_keep_spans():
     assert len(fillers) == 1
     assert fillers[0].start == 1.0 and fillers[0].end == 1.2
 
+
+def test_detect_fillers_applies_pre_roll_and_post_roll_padding():
+    words = [
+        Word(word="今天", start=0.0, end=0.5, probability=0.9),
+        Word(word="嗯", start=1.0, end=1.2, probability=0.8),
+        Word(word="天氣", start=1.8, end=2.2, probability=0.9),
+    ]
+    # pre_roll 0.2s: start 1.0 -> 0.8; post_roll 0.1s: end 1.2 -> 1.3
+    cands = detect_fillers(words, filler_words=["嗯"], pre_roll_s=0.2, post_roll_s=0.1, guard_s=0.05)
+    assert len(cands) == 1
+    assert cands[0]["start"] == 0.8
+    assert cands[0]["end"] == 1.3
+
+    # pre_roll bounded by previous word end + guard (0.5 + 0.05 = 0.55)
+    cands_clamped = detect_fillers(words, filler_words=["嗯"], pre_roll_s=0.8, post_roll_s=0.8, guard_s=0.05)
+    assert len(cands_clamped) == 1
+    assert cands_clamped[0]["start"] == 0.55
+    assert cands_clamped[0]["end"] == 1.75
+
+
+def test_detect_fillers_with_audio_snaps_to_energy_onset(tmp_path: Path):
+    import numpy as np
+    import scipy.io.wavfile as wavfile
+
+    sr = 16000
+    duration = 3.0
+    audio = np.zeros(int(duration * sr), dtype=np.float32)
+    # Speech tone between 1.1s and 1.8s
+    t = np.arange(int(1.1 * sr), int(1.8 * sr)) / sr
+    audio[int(1.1 * sr) : int(1.8 * sr)] = 0.2 * np.sin(2 * np.pi * 440 * t)
+
+    audio_path = tmp_path / "filler_speech.wav"
+    wavfile.write(str(audio_path), sr, audio)
+
+    # Whisper reported word lagging at 1.4 - 1.8 (missed 1.1 - 1.4)
+    words = [
+        Word(word="今天", start=0.0, end=0.5, probability=0.9),
+        Word(word="然後", start=1.4, end=1.8, probability=0.85),
+        Word(word="天氣", start=2.4, end=2.8, probability=0.9),
+    ]
+
+    cands = detect_fillers(words, filler_words=["然後"], audio_path=audio_path, guard_s=0.05)
+    assert len(cands) == 1
+    # Onset should snap back close to 1.1s (e.g. 1.08 - 1.15) instead of lagging at 1.4s
+    assert cands[0]["start"] < 1.15
+    assert cands[0]["start"] >= 0.55
+
+

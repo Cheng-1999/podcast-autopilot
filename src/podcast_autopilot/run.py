@@ -360,6 +360,9 @@ def run_part(
                 filler_words=config.filler_words,
                 pause_threshold_s=config.filler_pause_threshold_s,
                 min_probability=config.filler_min_probability,
+                pre_roll_s=config.filler_pre_roll_s,
+                post_roll_s=config.filler_post_roll_s,
+                audio_path=clean_wav,
             )
             edit_plan = plan_mod.load_plan(plan_path)
             keep_spans = audit_mod._effective_keep_spans(edit_plan)
