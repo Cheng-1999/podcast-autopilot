@@ -10,7 +10,7 @@ interface TranscriptPaneProps {
 }
 
 export const TranscriptPane: React.FC<TranscriptPaneProps> = ({ segments, currentTime, onSeek }) => {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const [query, setQuery] = useState("");
   const activeRef = useRef<HTMLDivElement | null>(null);
 
@@ -48,7 +48,7 @@ export const TranscriptPane: React.FC<TranscriptPaneProps> = ({ segments, curren
           gap: "8px",
         }}
       >
-        <span className="label-caps">{t("transcript.heading")} (TRANSCRIPT)</span>
+        <span className="label-caps">{t("transcript.heading")}</span>
         <input
           type="text"
           className="dense-input"
@@ -76,7 +76,7 @@ export const TranscriptPane: React.FC<TranscriptPaneProps> = ({ segments, curren
               }}
             >
               <span className="mono tabular-nums" style={{ color: "var(--text-muted)", flexShrink: 0 }}>
-                [{formatTimeShort(seg.start)}]
+                [{formatTimeShort(seg.start, locale)}]
               </span>
               <span style={{ color: active ? "var(--text-primary)" : "var(--text-muted)" }}>{seg.text}</span>
             </div>

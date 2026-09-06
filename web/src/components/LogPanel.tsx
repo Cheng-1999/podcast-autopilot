@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useLocale } from "../i18n";
+import { formatCount } from "../lib/format";
 
 interface LogPanelProps {
   logs: string[];
@@ -14,7 +15,7 @@ export const LogPanel: React.FC<LogPanelProps> = ({
   onToggle,
   onClose,
 }) => {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const containerRef = useRef<HTMLDivElement>(null);
   const [isHovered, setIsHovered] = useState<boolean>(false);
 
@@ -61,9 +62,9 @@ export const LogPanel: React.FC<LogPanelProps> = ({
         onClick={onToggle}
       >
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <span className="label-caps">{t("log.heading")} (LOG TAIL)</span>
+          <span className="label-caps">{t("log.heading")}</span>
           <span className="mono" style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
-            {t("log.lines", { count: logs.length })}
+            {t("log.lines", { count: formatCount(logs.length, locale) })}
           </span>
           {isHovered && isOpen && (
             <span

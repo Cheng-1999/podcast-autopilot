@@ -115,9 +115,9 @@ export const StageGrid: React.FC<StageGridProps> = ({ parts, stagesState }) => {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <span className="label-caps">{t("stage.heading")} (STAGE GRID)</span>
+          <span className="label-caps">{t("stage.heading")}</span>
           <span className="mono" style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
-            LIVE SSE
+            {t("status.live")}
           </span>
         </div>
       </div>
@@ -146,7 +146,7 @@ export const StageGrid: React.FC<StageGridProps> = ({ parts, stagesState }) => {
                 width: "140px",
               }}
             >
-              {t("stage.part")} (PART)
+              {t("stage.part")}
             </th>
             {ALL_PART_STAGES.map((stage) => (
               <th

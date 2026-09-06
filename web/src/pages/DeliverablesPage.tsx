@@ -4,13 +4,13 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchEpisode, fetchDeliverables, fetchReport, fetchJson } from "../api/client";
 import type { EpisodeDetail, DeliverablesResponse, ReceiptData, ChapterEntry } from "../api/types";
 import { RunReportView } from "../components/RunReportView";
-import { formatTimeTenths } from "../lib/format";
+import { formatDecimal, formatTimeTenths } from "../lib/format";
 import { useLocale } from "../i18n";
 
 export const DeliverablesPage: React.FC = () => {
   const { id = "" } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
 
   const { data: episode } = useQuery<EpisodeDetail>({
     queryKey: ["episode", id],
@@ -97,12 +97,12 @@ export const DeliverablesPage: React.FC = () => {
             gap: "10px",
           }}
         >
-          <span className="label-caps">{t("deliverables.final")} (FINAL MP3)</span>
+          <span className="label-caps">{t("deliverables.final")}</span>
           <audio controls src={deliverables.final_mp3} style={{ width: "100%" }} />
           <div style={{ display: "flex", gap: "16px", fontSize: "var(--font-size-sm)", flexWrap: "wrap" }}>
-            <span className="mono tabular-nums">{t("deliverables.duration", { duration: duration !== null ? formatTimeTenths(duration) : "-" })}</span>
-            <span className="mono tabular-nums">LUFS: {lufs !== null ? lufs.toFixed(2) : "-"}</span>
-            <span className="mono tabular-nums">True Peak: {truePeak !== null ? `${truePeak.toFixed(2)} dBTP` : "-"}</span>
+            <span className="mono tabular-nums">{t("deliverables.duration", { duration: duration !== null ? formatTimeTenths(duration, locale) : "-" })}</span>
+            <span className="mono tabular-nums">LUFS: {lufs !== null ? formatDecimal(lufs, locale, 2) : "-"}</span>
+            <span className="mono tabular-nums">True Peak: {truePeak !== null ? `${formatDecimal(truePeak, locale, 2)} dBTP` : "-"}</span>
             <a href={deliverables.final_mp3} download className="dense-btn">
               {t("deliverables.downloadMp3")}
             </a>
@@ -120,7 +120,7 @@ export const DeliverablesPage: React.FC = () => {
           }}
         >
           <div style={{ padding: "8px 12px", borderBottom: "var(--border-subtle)", backgroundColor: "var(--surface-elevated)" }}>
-            <span className="label-caps">{t("deliverables.chapters")} (CHAPTERS)</span>
+            <span className="label-caps">{t("deliverables.chapters")}</span>
           </div>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "var(--font-size-sm)" }}>
             <thead>
@@ -137,7 +137,7 @@ export const DeliverablesPage: React.FC = () => {
               {chapters.map((ch, i) => (
                 <tr key={i} style={{ height: "var(--row-height)", borderTop: "var(--border-subtle)" }}>
                   <td className="mono tabular-nums" style={{ padding: "0 12px" }}>
-                    {formatTimeTenths(ch.start)}
+                    {formatTimeTenths(ch.start, locale)}
                   </td>
                   <td style={{ padding: "0 12px", color: "var(--text-primary)" }}>{ch.title}</td>
                 </tr>
@@ -157,7 +157,7 @@ export const DeliverablesPage: React.FC = () => {
           }}
         >
           <div className="label-caps" style={{ marginBottom: "8px" }}>
-            {t("deliverables.editedParts")} (EDITED PARTS)
+            {t("deliverables.editedParts")}
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
             {deliverables.parts.map((p) => (

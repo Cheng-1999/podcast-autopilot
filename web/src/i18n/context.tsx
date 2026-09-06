@@ -11,7 +11,7 @@ interface LocaleContextValue {
   t: (key: MessageKey, params?: Record<string, string | number>) => string;
 }
 
-const LocaleContext = createContext<LocaleContextValue | null>(null);
+export const LocaleContext = createContext<LocaleContextValue | null>(null);
 
 export const LocaleProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [locale, setLocaleState] = useState<Locale>(() => resolveInitialLocale());

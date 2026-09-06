@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { ALL_PIPELINE_STAGES } from "../api/sse";
 import { useLocale } from "../i18n";
+import { formatCount } from "../lib/format";
 
 interface RunControlsProps {
   profiles: string[];
@@ -15,7 +16,7 @@ export const RunControls: React.FC<RunControlsProps> = ({
   onRun,
   onCancel,
 }) => {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const [profile, setProfile] = useState<string>("default");
   const [model, setModel] = useState<string>("medium");
   const [force, setForce] = useState<boolean>(false);
@@ -52,7 +53,7 @@ export const RunControls: React.FC<RunControlsProps> = ({
         {/* Profile */}
         <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
           <label className="label-caps" htmlFor="profile-select">
-            {t("controls.profile")} (PROFILE):
+            {t("controls.profile")}:
           </label>
           <select
             id="profile-select"
@@ -72,7 +73,7 @@ export const RunControls: React.FC<RunControlsProps> = ({
         {/* Model */}
         <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
           <label className="label-caps" htmlFor="model-select">
-            {t("controls.model")} (MODEL):
+            {t("controls.model")}:
           </label>
           <select
             id="model-select"
@@ -108,7 +109,7 @@ export const RunControls: React.FC<RunControlsProps> = ({
               cursor: isRunning ? "not-allowed" : "pointer",
             }}
           >
-            {t("controls.force")} (force)
+            {t("controls.force")}
           </label>
         </div>
 
@@ -120,9 +121,9 @@ export const RunControls: React.FC<RunControlsProps> = ({
             onClick={() => setShowSkipDropdown(!showSkipDropdown)}
             disabled={isRunning}
           >
-            <span className="label-caps">{t("controls.skip")} (SKIP):</span>
+            <span className="label-caps">{t("controls.skip")}:</span>
             <span className="mono" style={{ color: "var(--semantic-blue)" }}>
-              {skipStages.length > 0 ? t("controls.skipped", { count: skipStages.length }) : t("common.none")}
+              {skipStages.length > 0 ? t("controls.skipped", { count: formatCount(skipStages.length, locale) }) : t("common.none")}
             </span>
           </button>
 

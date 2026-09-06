@@ -5,17 +5,16 @@ import { fetchEpisodes } from "../api/client";
 import { getStatusDisplay } from "../api/status";
 import type { EpisodeSummary } from "../api/types";
 import { useLocale } from "../i18n";
+import { formatCount, formatDecimal, formatMinutesSeconds } from "../lib/format";
 
-function formatDuration(seconds: number | null | undefined): string {
+function formatDuration(seconds: number | null | undefined, locale: string): string {
   if (seconds === null || seconds === undefined || isNaN(seconds)) return "-";
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, "0")}`;
+  return formatMinutesSeconds(seconds, locale);
 }
 
-function formatLufs(lufs: number | null | undefined): string {
+function formatLufs(lufs: number | null | undefined, locale: string): string {
   if (lufs === null || lufs === undefined || isNaN(lufs)) return "-";
-  return `${lufs.toFixed(1)} LUFS`;
+  return `${formatDecimal(lufs, locale, 1)} LUFS`;
 }
 
 function formatTimestamp(ts: number | null | undefined, locale: string): string {
@@ -49,10 +48,10 @@ export const EpisodesPage: React.FC = () => {
       >
         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
           <h1 style={{ fontSize: "16px", fontWeight: 600, color: "var(--text-primary)" }}>
-            {t("episodes.heading")} (EPISODES)
+            {t("episodes.heading")}
           </h1>
           <span className="mono" style={{ fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
-            {t("episodes.count", { count: episodes?.length ?? 0 })}
+            {t("episodes.count", { count: formatCount(episodes?.length ?? 0, locale) })}
           </span>
         </div>
 
@@ -145,13 +144,13 @@ export const EpisodesPage: React.FC = () => {
                   {t("episodes.columns.number")}
                 </th>
                 <th className="label-caps" style={{ padding: "0 12px", whiteSpace: "nowrap" }}>
-                  {t("episodes.columns.title")} (TITLE)
+                  {t("episodes.columns.title")}
                 </th>
                 <th className="label-caps" style={{ padding: "0 12px", width: "80px", whiteSpace: "nowrap" }}>
                   {t("episodes.columns.parts")}
                 </th>
                 <th className="label-caps" style={{ padding: "0 12px", width: "110px", whiteSpace: "nowrap" }}>
-                  {t("episodes.columns.status")} (STATUS)
+                  {t("episodes.columns.status")}
                 </th>
                 <th className="label-caps" style={{ padding: "0 12px", width: "150px", whiteSpace: "nowrap" }}>
                   {t("episodes.columns.lastRun")}
@@ -293,7 +292,7 @@ export const EpisodesPage: React.FC = () => {
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {formatDuration(ep.duration)}
+                      {formatDuration(ep.duration, locale)}
                     </td>
 
                     {/* LUFS */}
@@ -305,7 +304,7 @@ export const EpisodesPage: React.FC = () => {
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {formatLufs(ep.lufs)}
+                      {formatLufs(ep.lufs, locale)}
                     </td>
 
                     {/* Actions */}

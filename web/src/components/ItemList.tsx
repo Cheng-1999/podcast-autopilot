@@ -18,7 +18,7 @@ export const ItemList: React.FC<ItemListProps> = ({
   onToggleEnabled,
   errorsByItemId,
 }) => {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const kindLabel: Record<string, string> = { keep: t("items.keep", {}), cut: t("review.cut"), fade: t("items.fade", {}), filler: t("review.filler"), clip: t("review.clip") };
   const rowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
 
@@ -47,7 +47,7 @@ export const ItemList: React.FC<ItemListProps> = ({
           backgroundColor: "var(--surface-elevated)",
         }}
       >
-        <span className="label-caps">{t("items.heading")} (ITEMS)</span>
+        <span className="label-caps">{t("items.heading")}</span>
         <span className="kbd-hint">{t("items.select")}</span>
         <span className="kbd-hint">{t("items.listen")}</span>
         <span className="kbd-hint">{t("items.toggle")}</span>
@@ -114,10 +114,10 @@ export const ItemList: React.FC<ItemListProps> = ({
                       {kindLabel[item.kind] ?? item.kind}
                     </td>
                     <td className="mono tabular-nums" style={{ padding: "0 8px" }}>
-                      {formatTimeTenths(item.start)}
+                      {formatTimeTenths(item.start, locale)}
                     </td>
                     <td className="mono tabular-nums" style={{ padding: "0 8px" }}>
-                      {formatTimeTenths(item.end)}
+                      {formatTimeTenths(item.end, locale)}
                     </td>
                     <td
                       style={{
