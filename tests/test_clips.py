@@ -140,6 +140,41 @@ def test_render_clip_duration_matches_window(tmp_path: Path):
     assert delta <= 0.05, f"duration delta {delta * 1000:.1f}ms exceeds 50ms tolerance"
 
 
+def test_render_clip_output_not_visible_until_render_completes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Regression for the intermittent "clip won't play" bug: ffmpeg creates+truncates
+    its destination the instant it opens it, well before encoding finishes. If
+    render_clip wrote straight to output_path, a request landing in that window (the
+    API exposes a clip as soon as output_path exists) would stream a partial/silent
+    MP3. render_clip must render to a same-directory temp file and only os.replace()
+    it into place after ffmpeg exits successfully, and must not leak that temp file.
+    """
+    import podcast_autopilot.clips as clips_mod
+
+    audio_path = tmp_path / "source.wav"
+    generate_synthetic_audio(audio_path, duration=10.0)
+    config = AppConfig()
+    output_path = tmp_path / "clip.mp3"
+
+    real_run_ffmpeg = clips_mod.run_ffmpeg
+    output_path_existed_during_final_render = []
+
+    def fake_run_ffmpeg(args, cfg=None):
+        dest = Path(args[-1])
+        if dest.suffix == ".mp3":
+            output_path_existed_during_final_render.append(output_path.exists())
+            dest.write_bytes(b"\x00" * 128)  # simulate ffmpeg's truncate-then-write
+            return None
+        return real_run_ffmpeg(args, cfg)
+
+    monkeypatch.setattr(clips_mod, "run_ffmpeg", fake_run_ffmpeg)
+
+    render_clip(audio_path, 2.0, 7.0, output_path, config)
+
+    assert output_path_existed_during_final_render == [False]
+    assert output_path.is_file()
+    assert list(tmp_path.glob(".*tmp-*")) == []
+
+
 def test_write_clip_srt_rebases_to_zero(tmp_path: Path):
     segments = [
         {"start": 0.0, "end": 5.0, "text": "before"},

@@ -13,6 +13,7 @@ export const ClipsPage: React.FC = () => {
   const fmt = (n: number) => formatMinutesSeconds(n, locale);
   const [part, setPart] = useState(""); const [job, setJob] = useState<JobStateResponse | null>(null); const [message, setMessage] = useState(""); const audioRef = useRef<HTMLAudioElement>(null); const playbackCleanupRef = useRef<(() => void) | null>(null);
   const [loadingClipId, setLoadingClipId] = useState<string | null>(null); const [playError, setPlayError] = useState("");
+  const readySrcRef = useRef<string | null>(null);
   const { data: episode } = useQuery({ queryKey: ["episode", id], queryFn: () => fetchEpisode(id) });
   const activePart = part || episode?.parts_detail?.[0]?.stem || episode?.parts?.[0]?.replace(/\.[^/.]+$/, "") || "";
   const { data, isLoading, error } = useQuery({ queryKey: ["clips", id, activePart], queryFn: () => fetchClips(id, activePart), enabled: Boolean(activePart) });
@@ -32,15 +33,23 @@ export const ClipsPage: React.FC = () => {
       audio.addEventListener("timeupdate", onTimeUpdate);
       stop = () => audio.removeEventListener("timeupdate", onTimeUpdate);
     };
-    const onLoadedMetadata = () => { audio.removeEventListener("loadedmetadata", onLoadedMetadata); audio.removeEventListener("error", onLoadError); start(); };
-    const onLoadError = () => { audio.removeEventListener("loadedmetadata", onLoadedMetadata); audio.removeEventListener("error", onLoadError); setLoadingClipId(null); setPlayError(t("clips.playError")); };
-    if (audio.src !== new URL(source, window.location.href).href) {
+    const onLoadedMetadata = () => { readySrcRef.current = source; audio.removeEventListener("loadedmetadata", onLoadedMetadata); audio.removeEventListener("error", onLoadError); start(); };
+    const onLoadError = () => { readySrcRef.current = null; audio.removeEventListener("loadedmetadata", onLoadedMetadata); audio.removeEventListener("error", onLoadError); setLoadingClipId(null); setPlayError(t("clips.playError")); };
+    // readySrcRef (not audio.src string equality) is the source of truth: a prior load that
+    // errored, or one still in flight from a rapid second click, must not be mistaken for
+    // "already loaded" -- both leave audio.src pointing at this same URL already.
+    if (readySrcRef.current === source && audio.readyState >= 1 && !audio.error) {
+      start();
+    } else {
+      readySrcRef.current = null;
       setLoadingClipId(clipId);
       audio.addEventListener("loadedmetadata", onLoadedMetadata);
       audio.addEventListener("error", onLoadError);
-      audio.src = source;
-    } else {
-      start();
+      if (audio.src === new URL(source, window.location.href).href) {
+        audio.load();
+      } else {
+        audio.src = source;
+      }
     }
     playbackCleanupRef.current = () => { audio.removeEventListener("loadedmetadata", onLoadedMetadata); audio.removeEventListener("error", onLoadError); stop?.(); audio.pause(); };
   }

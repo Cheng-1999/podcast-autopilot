@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from podcast_autopilot.assemble import AssembleError, assemble_episode
+from podcast_autopilot.assemble import AssembleError, TagsConfig, _export_mp3, assemble_episode
 from podcast_autopilot.config import AppConfig, resolve_ffmpeg_binaries
 from podcast_autopilot.ffmpeg import run_ffmpeg
 
@@ -105,6 +105,40 @@ def _build_episode(tmp_path: Path, config: AppConfig) -> tuple[Path, dict]:
     manifest_path = tmp_path / "episode.yaml"
     manifest_path.write_text(yaml.safe_dump(manifest, allow_unicode=True), encoding="utf-8")
     return manifest_path, manifest
+
+
+def test_export_mp3_output_not_visible_until_render_completes(tmp_path: Path, config: AppConfig, monkeypatch: pytest.MonkeyPatch):
+    """Regression for the intermittent "file won't load" bug: ffmpeg creates+truncates
+    its destination the instant it opens it, well before encoding finishes, and
+    get_deliverables (server/routes.py) exposes final_mp3 as soon as output_path
+    exists. _export_mp3 must render to a same-directory temp file and only
+    os.replace() it into place after ffmpeg exits successfully, and must not leak
+    that temp file.
+    """
+    import podcast_autopilot.assemble as assemble_mod
+
+    mixed_wav = tmp_path / "mixed.wav"
+    _make_tone(mixed_wav, 1.0, config)
+    output_path = tmp_path / "episode.mp3"
+
+    real_run_ffmpeg = assemble_mod.run_ffmpeg
+    output_path_existed_during_render = []
+
+    def fake_run_ffmpeg(args, cfg=None):
+        dest = Path(args[-1])
+        if dest.suffix == ".mp3":
+            output_path_existed_during_render.append(output_path.exists())
+            dest.write_bytes(b"\x00" * 128)  # simulate ffmpeg's truncate-then-write
+            return None
+        return real_run_ffmpeg(args, cfg)
+
+    monkeypatch.setattr(assemble_mod, "run_ffmpeg", fake_run_ffmpeg)
+
+    _export_mp3(mixed_wav, None, output_path, True, "Title", TagsConfig(), 1, config)
+
+    assert output_path_existed_during_render == [False]
+    assert output_path.is_file()
+    assert list(tmp_path.glob(".*tmp-*")) == []
 
 
 def test_assemble_duration_chapters_and_bgm_ducking(tmp_path: Path, config: AppConfig):

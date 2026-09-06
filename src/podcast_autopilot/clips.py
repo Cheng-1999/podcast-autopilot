@@ -300,14 +300,26 @@ def render_clip(audio_path: Path, start: float, end: float, output_path: Path, c
             f"measured_LRA={measured['input_lra']}:measured_thresh={measured['input_thresh']}:"
             f"offset={measured.get('target_offset', 0)}:linear=true:print_format=summary"
         )
-        run_ffmpeg(
-            [
-                "-i", str(trimmed), "-af", loudnorm,
-                "-c:a", "libmp3lame", "-b:a", "128k", "-ar", "44100",
-                str(output_path),
-            ],
-            config,
-        )
+        # Render to a temp file *in the destination directory* (so the rename below is
+        # same-filesystem and atomic) and move it into place only once ffmpeg has exited
+        # successfully. The API exposes a clip as soon as output_path exists
+        # (routes.get_clips checks .is_file()), and ffmpeg creates+truncates its
+        # destination the moment it opens it, well before encoding finishes. A
+        # request landing in that window would otherwise stream a partial/silent
+        # MP3 -- the intermittent "clip won't play" reports.
+        rendered = output_path.with_name(f".{output_path.stem}.tmp-{os.getpid()}{output_path.suffix}")
+        try:
+            run_ffmpeg(
+                [
+                    "-i", str(trimmed), "-af", loudnorm,
+                    "-c:a", "libmp3lame", "-b:a", "128k", "-ar", "44100",
+                    str(rendered),
+                ],
+                config,
+            )
+            os.replace(rendered, output_path)
+        finally:
+            rendered.unlink(missing_ok=True)
     return output_path
 
 

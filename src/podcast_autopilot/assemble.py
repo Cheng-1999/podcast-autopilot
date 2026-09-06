@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import re
 import subprocess
 import tempfile
@@ -400,8 +401,20 @@ def _export_mp3(
     args += ["-c:a", "libmp3lame", "-b:a", bitrate, "-ar", "44100", "-ac", "1" if is_mono else "2"]
     if not is_mono:
         args += ["-joint_stereo", "1"]
-    args.append(str(output_path))
-    run_ffmpeg(args, config)
+
+    # Render to a same-directory temp file and rename into place only once ffmpeg exits
+    # successfully. get_deliverables (server/routes.py) exposes final_mp3 as soon as
+    # output_path exists, but ffmpeg creates+truncates its destination the instant it
+    # opens it -- well before encoding finishes, and this function reruns for every TP
+    # retry attempt. A request landing mid-write (or mid-retry) would otherwise stream a
+    # partial/stale MP3, one source of the intermittent "file won't load" reports.
+    rendered = output_path.with_name(f".{output_path.stem}.tmp-{os.getpid()}{output_path.suffix}")
+    args.append(str(rendered))
+    try:
+        run_ffmpeg(args, config)
+        os.replace(rendered, output_path)
+    finally:
+        rendered.unlink(missing_ok=True)
 
 
 def assemble_episode(manifest_path: Path, out_dir: Path = Path("out"), config: AppConfig | None = None) -> dict:
