@@ -5,6 +5,7 @@ import { LanguageSelector } from "./LanguageSelector";
 import { useLocale } from "../i18n";
 import { formatDecimal } from "../lib/format";
 import { useTourOptional } from "../tour/context";
+import { shutdownServer } from "../api/client";
 
 interface StatusBarProps {
   health?: HealthResponse | null;
@@ -14,12 +15,25 @@ interface StatusBarProps {
     status: string;
     startedAt?: number | null;
   } | null;
+  onShutdown?: () => void;
 }
 
-export const StatusBar: React.FC<StatusBarProps> = ({ health, activeJob }) => {
+export const StatusBar: React.FC<StatusBarProps> = ({ health, activeJob, onShutdown }) => {
   const { t, locale } = useLocale();
   const tour = useTourOptional();
   const [elapsed, setElapsed] = useState<number>(0);
+
+  function handleQuit() {
+    const confirmed =
+      activeJob && activeJob.status === "running"
+        ? window.confirm(t("shutdown.confirmActiveJob", { episodeId: activeJob.episodeId }))
+        : window.confirm(t("shutdown.confirm"));
+    if (!confirmed) return;
+    onShutdown?.();
+    shutdownServer().catch(() => {
+      // the server closing the connection as it exits is the expected outcome here
+    });
+  }
 
   useEffect(() => {
     if (!activeJob || activeJob.status !== "running" || !activeJob.startedAt) {
@@ -90,7 +104,9 @@ export const StatusBar: React.FC<StatusBarProps> = ({ health, activeJob }) => {
             }}
           >
             {t("nav.episodes")}
-            <span className="kbd-hint hide-on-mobile">g e</span>
+            <span className="kbd-hint hide-on-mobile" title={t("nav.episodesShortcutHint")}>
+              g e
+            </span>
           </Link>
         </nav>
       </div>
@@ -179,6 +195,16 @@ export const StatusBar: React.FC<StatusBarProps> = ({ health, activeJob }) => {
             ?
           </button>
         )}
+
+        <button
+          type="button"
+          className="dense-btn"
+          onClick={handleQuit}
+          aria-label={t("shutdown.button")}
+          title={t("shutdown.button")}
+        >
+          ⏻
+        </button>
       </div>
     </header>
   );

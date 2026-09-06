@@ -49,6 +49,13 @@ export function generateClips(episodeId: string, partId: string, render: boolean
   return jsonRequest(`${API_BASE}/episodes/${encodeURIComponent(episodeId)}/parts/${encodeURIComponent(partId)}/clips`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ render }) });
 }
 
+/** Fires the shutdown request and returns once it's sent. The server closes
+ * the connection as part of exiting, so a network error here is the expected
+ * outcome, not a failure -- callers should treat it as best-effort. */
+export async function shutdownServer(): Promise<void> {
+  await fetch(`${API_BASE}/shutdown`, { method: "POST" });
+}
+
 export function mediaUrl(episodeId: string, relPath: string): string {
   return `${API_BASE}/media/${encodeURIComponent(episodeId)}/${relPath}`;
 }

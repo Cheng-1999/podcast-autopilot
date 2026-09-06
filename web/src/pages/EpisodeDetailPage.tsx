@@ -215,7 +215,9 @@ export const EpisodeDetailPage: React.FC = () => {
             style={{ height: "24px" }}
           >
             {t("nav.list")}
-            <span className="kbd-hint">g e</span>
+            <span className="kbd-hint" title={t("nav.episodesShortcutHint")}>
+              g e
+            </span>
           </button>
 
           <span className="mono" style={{ color: "var(--text-muted)" }}>

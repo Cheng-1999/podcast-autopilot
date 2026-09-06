@@ -5,8 +5,11 @@ business logic."""
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
+import threading
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -131,6 +134,20 @@ def health() -> dict:
         "whisper_models": whisper_models,
         "free_disk_gb": free_disk_gb,
     }
+
+
+@router.post("/shutdown")
+def shutdown() -> dict:
+    """Stops the dashboard process, e.g. for the "quit" button in the UI.
+    Runs in a background thread so this handler's response reaches the
+    browser before the process exits."""
+
+    def _exit_soon() -> None:
+        time.sleep(0.3)
+        os._exit(0)
+
+    threading.Thread(target=_exit_soon, daemon=True).start()
+    return {"ok": True}
 
 
 # --- uploads ------------------------------------------------------------------

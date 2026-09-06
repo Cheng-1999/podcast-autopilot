@@ -61,6 +61,24 @@ def test_health_reports_ffmpeg_and_models(client):
     assert set(body["whisper_models"]) == {"small", "medium"}
 
 
+def test_shutdown_responds_ok_and_schedules_process_exit(client, monkeypatch):
+    c, _root = client
+    exit_calls: list[int] = []
+    # os._exit would kill the test process itself, so replace it with a spy
+    # and just confirm the endpoint schedules a call to it.
+    monkeypatch.setattr("podcast_autopilot.server.routes.os._exit", exit_calls.append)
+    monkeypatch.setattr("podcast_autopilot.server.routes.time.sleep", lambda _seconds: None)
+
+    resp = c.post("/api/shutdown")
+
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": True}
+    deadline = time.monotonic() + 5.0
+    while not exit_calls and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert exit_calls == [0]
+
+
 def test_list_episodes_sees_bundled_example(client):
     c, _root = client
     resp = c.get("/api/episodes")

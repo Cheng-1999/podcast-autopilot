@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { fetchHealth, fetchEpisodes } from "./api/client";
@@ -11,11 +11,14 @@ import { ReviewPage } from "./pages/ReviewPage";
 import { DeliverablesPage } from "./pages/DeliverablesPage";
 import { confirmNavigation } from "./lib/navigationGuard";
 import { TourOverlay } from "./tour/TourOverlay";
+import { useLocale } from "./i18n";
 import type { EpisodeSummary } from "./api/types";
 
 export const App: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { t } = useLocale();
+  const [shutDown, setShutDown] = useState(false);
 
   // Fetch health data for top status bar
   const { data: health } = useQuery({
@@ -73,6 +76,30 @@ export const App: React.FC = () => {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [navigate, location.pathname]);
 
+  if (shutDown) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: "8px",
+          minHeight: "100vh",
+          backgroundColor: "var(--surface-bg)",
+          color: "var(--text-primary)",
+        }}
+      >
+        <span className="mono" style={{ fontSize: "15px" }}>
+          {t("shutdown.stopped")}
+        </span>
+        <span style={{ color: "var(--text-muted)", fontSize: "var(--font-size-sm)" }}>
+          {t("shutdown.stoppedHint")}
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div
       style={{
@@ -82,7 +109,7 @@ export const App: React.FC = () => {
         backgroundColor: "var(--surface-bg)",
       }}
     >
-      <StatusBar health={health} activeJob={activeJob} />
+      <StatusBar health={health} activeJob={activeJob} onShutdown={() => setShutDown(true)} />
 
       <main
         style={{
