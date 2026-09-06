@@ -34,6 +34,11 @@ voice_chain:
 # tools/models/ (gitignored), downloaded from Hugging Face on first use.
 whisper_model_size: small
 
+# Spoken language of the audio, e.g. "zh", "en", "ja". Leave null (default)
+# to auto-detect per file -- pinning this to the wrong language makes
+# faster-whisper "transcribe" the audio into garbled text in that language.
+whisper_language: null
+
 # Filler-word proposal detection (see `plan-fillers`); a word only counts
 # when isolated by a pause > filler_pause_threshold_s on both sides and its
 # recognition probability is above filler_min_probability.

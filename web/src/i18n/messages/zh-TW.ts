@@ -124,6 +124,8 @@ const zhTW: Record<MessageKey, string> = {
   "review.filler": "贅字",
   "review.clip": "片段候選",
   "review.zoom": "捲動縮放 · 拖曳平移",
+  "review.play": "播放",
+  "review.pause": "暫停",
   "report.heading": "執行報告",
   "report.empty": "尚未產生 RUN_REPORT.md，請先執行處理流程。",
   "clips.heading": "片段候選",

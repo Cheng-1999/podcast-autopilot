@@ -76,41 +76,65 @@ def transcribe_audio(
     config: AppConfig | None = None,
     compute_type: str = "int8",
     beam_size: int = 1,
+    language: str | None = None,
 ) -> dict:
-    """Transcribe audio to zh-TW with faster-whisper (CTranslate2, CPU, int8).
+    """Transcribe audio with faster-whisper (CTranslate2, CPU, int8), auto-detecting its spoken language.
 
-    word_timestamps and vad_filter are always on. Whisper's raw "zh" output
-    leans Simplified, so opencc s2twp is applied as a post-pass over every
-    segment and word; the number of characters it changed is logged in the
-    returned dict under "opencc_chars_changed".
+    Forcing every file to `language="zh"` (the old behavior) makes
+    non-Chinese audio come out as garbled, wrong Chinese-looking text --
+    the model happily "transcribes" English or Japanese speech into
+    nonsense Hanzi when told the language is fixed. `language` (falling
+    back to `config.whisper_language`) still lets a caller pin the
+    language when they know it; leaving both unset auto-detects per file.
+
+    word_timestamps and vad_filter are always on. The zh-TW initial
+    prompt nudge and the opencc s2twp post-pass (whisper's raw "zh"
+    output leans Simplified) are only applied when the resolved language
+    is Chinese -- applying either to other languages would bias or
+    corrupt their transcripts. The post-pass's changed-character count is
+    logged in the returned dict under "opencc_chars_changed" (0 when the
+    language isn't Chinese).
     """
-    import opencc
+    from faster_whisper.audio import decode_audio
 
     audio_path = Path(audio_path)
     model = _load_model(model_size, compute_type)
 
+    forced_language = language if language is not None else (config.whisper_language if config else None)
+    audio = decode_audio(str(audio_path))
+    if forced_language is None:
+        detected_language, _, _ = model.detect_language(audio, vad_filter=True)
+        resolved_language = detected_language
+    else:
+        resolved_language = forced_language
+    is_chinese = resolved_language == "zh"
+
     raw_segments, info = model.transcribe(
-        str(audio_path),
-        language="zh",
-        initial_prompt=INITIAL_PROMPT_ZH_TW,
+        audio,
+        language=resolved_language,
+        initial_prompt=INITIAL_PROMPT_ZH_TW if is_chinese else None,
         word_timestamps=True,
         vad_filter=True,
         beam_size=beam_size,
     )
 
-    converter = opencc.OpenCC("s2twp")
+    converter = None
+    if is_chinese:
+        import opencc
+
+        converter = opencc.OpenCC("s2twp")
 
     segments: list[Segment] = []
     before_parts: list[str] = []
     after_parts: list[str] = []
     for idx, seg in enumerate(raw_segments):
         raw_text = seg.text.strip()
-        text = converter.convert(raw_text)
+        text = converter.convert(raw_text) if converter else raw_text
         before_parts.append(raw_text)
         after_parts.append(text)
         words = [
             Word(
-                word=converter.convert(w.word.strip()),
+                word=converter.convert(w.word.strip()) if converter else w.word.strip(),
                 start=w.start,
                 end=w.end,
                 probability=w.probability,

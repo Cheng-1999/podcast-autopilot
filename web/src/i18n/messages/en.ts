@@ -148,6 +148,8 @@ const en = {
   "review.filler": "Filler",
   "review.clip": "Clip candidate",
   "review.zoom": "Scroll to zoom · drag to pan",
+  "review.play": "Play",
+  "review.pause": "Pause",
   "report.heading": "Run report",
   "report.empty": "RUN_REPORT.md has not been generated. Run the processing pipeline first.",
   "clips.heading": "Clip candidates",

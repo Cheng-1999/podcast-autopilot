@@ -4,11 +4,104 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
+from podcast_autopilot import transcribe as transcribe_mod
 from podcast_autopilot.audit import audit_plan, sha256_of_file
 from podcast_autopilot.cli import app
+from podcast_autopilot.config import AppConfig
 from podcast_autopilot.ffmpeg import generate_synthetic_audio
 from podcast_autopilot.plan import EditPlan, ProfileInfo, SourceInfo
 from podcast_autopilot.transcribe import Word, detect_fillers, filler_plan_items
+
+
+class _FakeWord:
+    def __init__(self, word: str, start: float, end: float, probability: float = 0.9):
+        self.word = word
+        self.start = start
+        self.end = end
+        self.probability = probability
+
+
+class _FakeSegment:
+    def __init__(self, text: str, start: float, end: float, words: list[_FakeWord]):
+        self.text = text
+        self.start = start
+        self.end = end
+        self.words = words
+
+
+class _FakeInfo:
+    def __init__(self, language: str, probability: float = 0.95):
+        self.language = language
+        self.language_probability = probability
+
+
+class _FakeModel:
+    """Stands in for WhisperModel: records transcribe() kwargs, never touches faster-whisper."""
+
+    def __init__(self, detected_language: str, segment_text: str):
+        self.detected_language = detected_language
+        self.segment_text = segment_text
+        self.transcribe_calls: list[dict] = []
+        self.detect_language_called = False
+
+    def detect_language(self, audio, vad_filter=True):
+        self.detect_language_called = True
+        return self.detected_language, 0.9, {}
+
+    def transcribe(self, audio, **kwargs):
+        self.transcribe_calls.append(kwargs)
+        segs = [_FakeSegment(self.segment_text, 0.0, 1.0, [_FakeWord(self.segment_text, 0.0, 1.0)])]
+        return iter(segs), _FakeInfo(kwargs["language"])
+
+
+def _patch_transcribe_internals(monkeypatch, fake_model: _FakeModel):
+    monkeypatch.setattr(transcribe_mod, "_load_model", lambda *a, **k: fake_model)
+    monkeypatch.setattr("faster_whisper.audio.decode_audio", lambda path: "fake-audio-array")
+
+
+def test_transcribe_audio_auto_detects_language_when_unset(monkeypatch, tmp_path: Path):
+    fake_model = _FakeModel(detected_language="en", segment_text="hello world")
+    _patch_transcribe_internals(monkeypatch, fake_model)
+
+    result = transcribe_mod.transcribe_audio(tmp_path / "part.wav")
+
+    assert fake_model.detect_language_called is True
+    assert fake_model.transcribe_calls[0]["language"] == "en"
+    assert fake_model.transcribe_calls[0]["initial_prompt"] is None
+    assert result["language"] == "en"
+    assert result["segments"][0].text == "hello world"  # untouched: no opencc pass for non-Chinese
+    assert result["opencc_chars_changed"] == 0
+
+
+def test_transcribe_audio_honors_explicit_language_without_detection(monkeypatch, tmp_path: Path):
+    fake_model = _FakeModel(detected_language="ja", segment_text="hello")
+    _patch_transcribe_internals(monkeypatch, fake_model)
+
+    transcribe_mod.transcribe_audio(tmp_path / "part.wav", language="en")
+
+    assert fake_model.detect_language_called is False
+    assert fake_model.transcribe_calls[0]["language"] == "en"
+
+
+def test_transcribe_audio_falls_back_to_config_language(monkeypatch, tmp_path: Path):
+    fake_model = _FakeModel(detected_language="ja", segment_text="hello")
+    _patch_transcribe_internals(monkeypatch, fake_model)
+
+    transcribe_mod.transcribe_audio(tmp_path / "part.wav", config=AppConfig(whisper_language="ko"))
+
+    assert fake_model.detect_language_called is False
+    assert fake_model.transcribe_calls[0]["language"] == "ko"
+
+
+def test_transcribe_audio_applies_opencc_and_prompt_only_for_chinese(monkeypatch, tmp_path: Path):
+    fake_model = _FakeModel(detected_language="zh", segment_text="国际")  # simplified: expect s2twp to convert it
+    _patch_transcribe_internals(monkeypatch, fake_model)
+
+    result = transcribe_mod.transcribe_audio(tmp_path / "part.wav")
+
+    assert fake_model.transcribe_calls[0]["initial_prompt"] == transcribe_mod.INITIAL_PROMPT_ZH_TW
+    assert result["segments"][0].text != "国际"  # opencc s2twp pass changed it
+    assert result["opencc_chars_changed"] > 0
 
 
 def test_detects_isolated_filler_with_pauses_on_both_sides():

@@ -88,6 +88,7 @@ export const ReviewPage: React.FC = () => {
   const [errors, setErrors] = useState<string[]>([]);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [currentTime, setCurrentTime] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement>(null);
   const snippetStopRef = useRef<number | null>(null);
@@ -149,6 +150,17 @@ export const ReviewPage: React.FC = () => {
     if (snippetStopRef.current !== null && audio.currentTime >= snippetStopRef.current) {
       audio.pause();
       snippetStopRef.current = null;
+    }
+  }, []);
+
+  const togglePlay = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (audio.paused) {
+      snippetStopRef.current = null;
+      audio.play();
+    } else {
+      audio.pause();
     }
   }, []);
 
@@ -349,7 +361,15 @@ export const ReviewPage: React.FC = () => {
         </div>
       </div>
 
-      <audio ref={audioRef} src={audioSrc} onTimeUpdate={handleTimeUpdate} style={{ display: "none" }} />
+      <audio
+        ref={audioRef}
+        src={audioSrc}
+        onTimeUpdate={handleTimeUpdate}
+        onPlay={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
+        onEnded={() => setIsPlaying(false)}
+        style={{ display: "none" }}
+      />
 
       <div
         data-tour="waveform"
@@ -360,7 +380,13 @@ export const ReviewPage: React.FC = () => {
           padding: "8px",
         }}
       >
-        <div style={{ display: "flex", gap: "12px", padding: "0 4px 8px", fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", padding: "0 4px 8px", fontSize: "var(--font-size-xs)", color: "var(--text-muted)" }}>
+          <button type="button" className="dense-btn" onClick={togglePlay} disabled={!audioSrc}>
+            {isPlaying ? t("review.pause") : t("review.play")}
+          </button>
+          <span className="mono tabular-nums">
+            {formatTimeTenths(currentTime, locale)} / {formatTimeTenths(duration, locale)}
+          </span>
           <span><span style={{ color: "rgb(229,72,77)" }}>■</span> {t("review.legendCut")}</span>
           <span><span style={{ color: "rgb(245,165,36)" }}>■</span> {t("review.legendFiller")}</span>
           <span><span style={{ color: "rgb(76,141,255)" }}>▢</span> {t("review.legendClip")}</span>

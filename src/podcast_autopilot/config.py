@@ -29,6 +29,7 @@ class AppConfig:
     profile_name: str = "default"
     pauses: "PauseConfig" = None  # type: ignore[assignment]
     whisper_model_size: str = "small"
+    whisper_language: str | None = None  # None = auto-detect per file; else pin e.g. "zh", "en"
     filler_words: list[str] = field(default_factory=lambda: list(DEFAULT_FILLER_WORDS))
     filler_pause_threshold_s: float = 0.2
     filler_min_probability: float = 0.5
@@ -103,6 +104,7 @@ def load_config(config_path: Path | None = None) -> AppConfig:
         loudness_target_tp=float(data.get("loudness_target_tp", -1.5)),
         profile_name=str(data.get("name", "default")),
         whisper_model_size=str(data.get("whisper_model_size", "small")),
+        whisper_language=data.get("whisper_language") or None,
         filler_words=list(data.get("filler_words", DEFAULT_FILLER_WORDS)),
         filler_pause_threshold_s=float(data.get("filler_pause_threshold_s", 0.2)),
         filler_min_probability=float(data.get("filler_min_probability", 0.5)),
