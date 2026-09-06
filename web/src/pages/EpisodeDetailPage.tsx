@@ -186,7 +186,7 @@ export const EpisodeDetailPage: React.FC = () => {
   }, [runState.status, handleRun]);
 
   const isRunning = runState.status === "running";
-  const statusInfo = getStatusDisplay(isRunning ? "running" : episode?.status);
+  const statusInfo = getStatusDisplay(isRunning ? "running" : episode?.status, t);
 
   const partsForGrid =
     episode?.parts_detail && episode.parts_detail.length > 0

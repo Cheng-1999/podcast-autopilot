@@ -169,7 +169,7 @@ export const EpisodesPage: React.FC = () => {
             </thead>
             <tbody>
               {episodes.map((ep) => {
-                const statusInfo = getStatusDisplay(ep.status);
+                const statusInfo = getStatusDisplay(ep.status, t);
                 const epLabel =
                   ep.episode !== null && ep.episode !== undefined
                     ? `EP${ep.episode.toString().padStart(2, "0")}`
