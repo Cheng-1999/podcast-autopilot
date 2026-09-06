@@ -33,6 +33,7 @@ const ko: Record<MessageKey, string> = {
   "tour.step.clipsDownload.title": "클립 다운로드", "tour.step.clipsDownload.body": "렌더링이 끝나면 각 행에서 클립의 MP3와 자막 파일을 다운로드할 수 있습니다.",
   "tour.step.deliverablesDownload.title": "완성된 에피소드 다운로드", "tour.step.deliverablesDownload.body": "파이프라인이 만든 최종 믹스 MP3를 여기서 받을 수 있습니다.",
   "tour.step.deliverablesReport.title": "실행 보고서", "tour.step.deliverablesReport.body": "RUN_REPORT.md를 열어 이번 처리의 전체 내역을 확인합니다.",
+  "clips.delete": "클립 삭제", "clips.deleting": "삭제 중…", "clips.deleteConfirm": "이 파트의 모든 후보와 렌더링 파일을 삭제할까요? 되돌릴 수 없습니다.", "clips.deleted": "클립을 삭제했습니다",
 };
 
 export default ko;

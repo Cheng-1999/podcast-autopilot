@@ -182,6 +182,7 @@ const zhTW: Record<MessageKey, string> = {
   "tour.step.clipsDownload.title": "下載片段", "tour.step.clipsDownload.body": "渲染完成後，可在各列下載該片段的 MP3 與字幕檔。",
   "tour.step.deliverablesDownload.title": "下載完成的集數", "tour.step.deliverablesDownload.body": "流程產出後，在這裡取得最終混音完成的 MP3。",
   "tour.step.deliverablesReport.title": "執行報告", "tour.step.deliverablesReport.body": "開啟 RUN_REPORT.md 查看本次處理的完整明細。",
+  "clips.delete": "刪除片段", "clips.deleting": "刪除中…", "clips.deleteConfirm": "刪除此段落的所有候選與渲染檔案？此操作無法復原。", "clips.deleted": "片段已刪除",
 };
 
 export default zhTW;

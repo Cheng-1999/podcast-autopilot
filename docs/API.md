@@ -719,6 +719,14 @@ stages `"clips"` and (when `render` is true) `"render"`.
 
 ---
 
+### `DELETE /api/episodes/{id}/parts/{part}/clips`
+
+Deletes the part's generated `clips.json` and all rendered clip files under its `clips/` directory.
+The operation is idempotent and returns `{ "ok": true }`; it returns `409 Conflict` if clip generation
+for this part is still queued or running.
+
+---
+
 ## Media Serving
 
 ### `GET /api/media/{episode}/{path:path}`

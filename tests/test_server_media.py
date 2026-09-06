@@ -237,6 +237,23 @@ def test_clips_post_writes_clips_json_and_get_reads_it(client):
     assert "candidates" in get_resp.json()
 
 
+def test_delete_clips_removes_metadata_and_rendered_files(client):
+    c, root = client
+    part_dir = root / "out" / "episode.example" / "parts" / "part1"
+    clips_dir = part_dir / "clips"
+    clips_dir.mkdir(parents=True, exist_ok=True)
+    (part_dir / "clips.json").write_text('{"candidates": []}', encoding="utf-8")
+    (clips_dir / "1.mp3").write_bytes(b"audio")
+    (clips_dir / "1.srt").write_text("subtitle", encoding="utf-8")
+
+    resp = c.delete("/api/episodes/episode.example/parts/part1/clips")
+
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": True}
+    assert not (part_dir / "clips.json").exists()
+    assert not clips_dir.exists()
+
+
 def test_clips_post_without_transcript_is_404(client):
     c, _root = client
     resp = c.post("/api/episodes/episode.example/parts/part1/clips", json={"render": False})

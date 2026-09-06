@@ -41,6 +41,7 @@ const zhCN: Record<MessageKey, string> = {
   "tour.step.clipsDownload.title": "下载片段", "tour.step.clipsDownload.body": "渲染完成后，可在各行下载该片段的 MP3 与字幕文件。",
   "tour.step.deliverablesDownload.title": "下载完成的剧集", "tour.step.deliverablesDownload.body": "流程产出后，在这里获取最终混音完成的 MP3。",
   "tour.step.deliverablesReport.title": "运行报告", "tour.step.deliverablesReport.body": "打开 RUN_REPORT.md 查看本次处理的完整明细。",
+  "clips.delete": "删除片段", "clips.deleting": "正在删除…", "clips.deleteConfirm": "删除此段落的所有候选和渲染文件？此操作无法撤销。", "clips.deleted": "片段已删除",
 };
 
 export default zhCN;

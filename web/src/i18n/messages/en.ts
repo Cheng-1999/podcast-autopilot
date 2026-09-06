@@ -227,6 +227,7 @@ const en = {
   "tour.step.deliverablesDownload.body": "Grab the final mixed MP3 once the pipeline has produced it.",
   "tour.step.deliverablesReport.title": "Run report",
   "tour.step.deliverablesReport.body": "Open RUN_REPORT.md for the full breakdown of what happened during processing.",
+  "clips.delete": "Delete clips", "clips.deleting": "Deleting…", "clips.deleteConfirm": "Delete all candidates and rendered files for this part? This cannot be undone.", "clips.deleted": "Clips deleted",
 } as const;
 
 export default en;

@@ -317,6 +317,25 @@ def run_episode(episode_id: str, body: RunRequest, request: Request) -> dict:
     return job.to_dict()
 
 
+@router.delete("/episodes/{episode_id}/parts/{part_id}/clips")
+def delete_clips(episode_id: str, part_id: str, request: Request) -> dict:
+    """Remove all generated clip candidates and rendered files for a part."""
+    project_root = _project_root(request)
+    job_manager = _job_manager(request)
+    ref = _ref_or_404(project_root, episode_id)
+    part_dir = _part_dir_or_404(project_root, episode_id, ref, part_id)
+    active_job = job_manager.active_job_for_episode(episode_id)
+    if active_job and active_job.kind == "clips" and active_job.part_id == part_id:
+        raise HTTPException(409, "cannot delete clips while clip generation is running")
+    clips_path = part_dir / "clips.json"
+    clips_dir = part_dir / "clips"
+    if clips_path.is_file():
+        clips_path.unlink()
+    if clips_dir.is_dir():
+        shutil.rmtree(clips_dir)
+    return {"ok": True}
+
+
 # --- jobs ------------------------------------------------------------------
 
 

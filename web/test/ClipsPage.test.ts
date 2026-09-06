@@ -23,10 +23,11 @@ vi.mock("../src/api/client", () => ({
   fetchEpisode: vi.fn(),
   fetchClips: vi.fn(),
   generateClips: vi.fn(),
+  deleteClips: vi.fn(),
   createJobEventSource: vi.fn(() => () => {}),
 }));
 
-import { fetchEpisode, fetchClips } from "../src/api/client";
+import { fetchEpisode, fetchClips, deleteClips } from "../src/api/client";
 
 function t(key: MessageKey, params?: Record<string, string | number>) {
   return interpolate(getMessage("en", key), params);
@@ -168,6 +169,22 @@ describe("ClipsPage playback (readySrcRef race fix)", () => {
     expect(view.playButtons()[1].textContent).toBe(t("common.play"));
     expect(audio.currentTime).toBe(10);
 
+    view.unmount();
+  });
+
+  it("confirms and deletes all clips for the active part", async () => {
+    const view = mountClipsPage();
+    await flush();
+    vi.mocked(deleteClips).mockResolvedValue({ ok: true });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const deleteButton = Array.from(view.container.querySelectorAll("button")).find((b) => b.textContent === t("clips.delete"));
+    expect(deleteButton).toBeTruthy();
+    act(() => { deleteButton?.click(); });
+    await flush();
+    expect(confirm).toHaveBeenCalledWith(t("clips.deleteConfirm"));
+    expect(deleteClips).toHaveBeenCalledWith("ep1", "part1");
+    expect(view.container.textContent).toContain(t("clips.deleted"));
+    confirm.mockRestore();
     view.unmount();
   });
 });

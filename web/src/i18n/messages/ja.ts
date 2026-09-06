@@ -32,6 +32,7 @@ const ja: Record<MessageKey, string> = {
   "tour.step.clipsDownload.title": "クリップをダウンロード", "tour.step.clipsDownload.body": "レンダリング後、各行からクリップのMP3と字幕ファイルをダウンロードできます。",
   "tour.step.deliverablesDownload.title": "完成したエピソードをダウンロード", "tour.step.deliverablesDownload.body": "パイプラインが生成した最終ミックス済みMP3をここで取得します。",
   "tour.step.deliverablesReport.title": "実行レポート", "tour.step.deliverablesReport.body": "RUN_REPORT.mdを開いて、処理内容の詳細を確認します。",
+  "clips.delete": "クリップを削除", "clips.deleting": "削除中…", "clips.deleteConfirm": "このパートの候補とレンダリング済みファイルをすべて削除しますか？元に戻せません。", "clips.deleted": "クリップを削除しました",
 };
 
 export default ja;
