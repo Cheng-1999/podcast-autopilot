@@ -158,6 +158,25 @@ class Job:
     def is_terminal(self) -> bool:
         return self.status in TERMINAL_STATUSES
 
+    def finish_if_active(self, status: str, error: Optional[str] = None,
+                          event: Optional[str] = None, message: str = "") -> bool:
+        """Transition to a terminal status, unless the job already reached
+        one. Guards against a timed-out job's abandoned thread (see
+        `JobManager._run_job_with_timeout`) finishing -- successfully or
+        not -- after the watchdog already marked it failed: without this
+        guard a late `done` would silently overwrite the timeout failure and
+        hide that the output may have been written by an abandoned thread.
+        Returns whether this call actually changed the status."""
+        with self._cond:
+            if self.is_terminal():
+                return False
+            self.status = status
+            self.error = error
+            self.finished_at = time.time()
+            if event is not None:
+                self.add_event(event, message=message)
+            return True
+
     def to_dict(self) -> dict:
         return {
             "id": self.id,
@@ -187,6 +206,12 @@ class JobManager:
         self._queue: "queue.Queue[str]" = queue.Queue()
         self._lock = threading.Lock()
         self._deleting: set[str] = set()
+        # Episodes whose job timed out but whose worker thread is still
+        # alive in the background (Python cannot forcibly kill a thread
+        # blocked in a native call). Kept "busy" until that thread actually
+        # returns, so a new job or a delete cannot start while the abandoned
+        # thread may still be writing the episode's output files.
+        self._abandoned_episodes: set[str] = set()
         self._worker = threading.Thread(target=self._run_worker, name="dashboard-job-worker", daemon=True)
         self._worker.start()
 
@@ -210,7 +235,7 @@ class JobManager:
         with self._lock:
             if episode_id in self._deleting:
                 raise EpisodeDeletingError(episode_id)
-            if self._active_job_for_episode_locked(episode_id) is not None:
+            if self._episode_busy_locked(episode_id):
                 raise EpisodeBusyError(episode_id)
             self._jobs[job_id] = job
         self._queue.put(job_id)
@@ -234,7 +259,7 @@ class JobManager:
         with self._lock:
             if episode_id in self._deleting:
                 raise EpisodeDeletingError(episode_id)
-            if self._active_job_for_episode_locked(episode_id) is not None:
+            if self._episode_busy_locked(episode_id):
                 raise EpisodeBusyError(episode_id)
             self._jobs[job_id] = job
         self._queue.put(job_id)
@@ -255,12 +280,21 @@ class JobManager:
         with self._lock:
             return self._active_job_for_episode_locked(episode_id)
 
+    def _episode_busy_locked(self, episode_id: str) -> bool:
+        """Caller must hold self._lock. True if a job is queued/running for
+        this episode, or if a timed-out job's abandoned thread might still
+        be writing its output (see `_abandoned_episodes`)."""
+        if self._active_job_for_episode_locked(episode_id) is not None:
+            return True
+        return episode_id in self._abandoned_episodes
+
     def begin_delete(self, episode_id: str) -> bool:
-        """Atomically check for an active job and mark the episode as being
-        deleted, so a job submitted concurrently with a delete cannot race
-        it. Returns False (no state change) if a job is already active."""
+        """Atomically check for an active (or abandoned-but-still-running)
+        job and mark the episode as being deleted, so a job submitted
+        concurrently with a delete cannot race it. Returns False (no state
+        change) if a job is already active."""
         with self._lock:
-            if self._active_job_for_episode_locked(episode_id) is not None:
+            if self._episode_busy_locked(episode_id):
                 return False
             self._deleting.add(episode_id)
             return True
@@ -307,18 +341,39 @@ class JobManager:
         """Run the job on its own thread and give up waiting after
         JOB_TIMEOUT_S so one stuck job (e.g. blocked on I/O) cannot wedge the
         queue or the episode's delete/re-run forever. If the job is still
-        running when the timeout fires, its thread is abandoned (Python
-        cannot forcibly kill a thread blocked in a native call) and it may
-        keep writing to the episode's output files in the background --
-        restarting the dashboard is the only way to fully stop it."""
+        running when the timeout fires, `cancel_requested` is set so the
+        pipeline can stop cooperatively at its next stage boundary (see
+        `run._check_cancel`), but the thread cannot be forcibly killed if
+        it's blocked in a native call, so it may keep running and writing to
+        the episode's output files in the background. Until it actually
+        returns, the episode is kept "busy" (`_abandoned_episodes`) so a new
+        job or a delete cannot start and race it; `finish_if_active` on the
+        Job itself stops the abandoned thread's eventual result (success or
+        failure) from overwriting the timeout failure recorded here."""
         thread = threading.Thread(target=self._run_job, args=(job,), daemon=True)
         thread.start()
         thread.join(JOB_TIMEOUT_S)
-        if thread.is_alive() and not job.is_terminal():
-            job.status = "failed"
-            job.error = f"job exceeded the {JOB_TIMEOUT_S}s time limit and was abandoned"
-            job.finished_at = time.time()
-            job.add_event("job_failed", message=job.error)
+        if thread.is_alive():
+            job.cancel_requested = True
+            # Mark the episode busy via _abandoned_episodes *before* the job
+            # is exposed as terminal below, so no window exists where a
+            # concurrent submit/delete can see neither an active job nor an
+            # abandoned episode and race the still-running thread.
+            with self._lock:
+                self._abandoned_episodes.add(job.episode_id)
+            timeout_msg = f"job exceeded the {JOB_TIMEOUT_S}s time limit and was abandoned"
+            job.finish_if_active("failed", error=timeout_msg, event="job_failed", message=timeout_msg)
+            threading.Thread(
+                target=self._reap_abandoned, args=(job.episode_id, thread),
+                name="dashboard-job-reaper", daemon=True,
+            ).start()
+
+    def _reap_abandoned(self, episode_id: str, thread: threading.Thread) -> None:
+        """Block (on a throwaway daemon thread) until an abandoned job
+        thread actually returns, then free the episode back up."""
+        thread.join()
+        with self._lock:
+            self._abandoned_episodes.discard(episode_id)
 
     def _run_job(self, job: Job) -> None:
         try:
@@ -359,21 +414,14 @@ class JobManager:
                         )
                         run_mod.write_run_report(report, report.episode_root / "RUN_REPORT.md")
         except run_mod.CancelledError:
-            job.status = "cancelled"
-            job.add_event("job_cancelled")
+            job.finish_if_active("cancelled", event="job_cancelled")
         except (run_mod.RunError, assemble_mod.AssembleError, voice_chain_mod.VoiceChainError) as exc:
-            job.status = "failed"
-            job.error = str(exc)
-            job.add_event("job_failed", message=str(exc))
+            job.finish_if_active("failed", error=str(exc), event="job_failed", message=str(exc))
         except Exception as exc:  # pragma: no cover - defensive: never leave a job stuck "running"
-            job.status = "failed"
-            job.error = f"{type(exc).__name__}: {exc}"
-            job.add_event("job_failed", message=job.error)
+            msg = f"{type(exc).__name__}: {exc}"
+            job.finish_if_active("failed", error=msg, event="job_failed", message=msg)
         else:
-            job.status = "done"
-            job.add_event("job_finished")
-        finally:
-            job.finished_at = time.time()
+            job.finish_if_active("done", event="job_finished")
 
 
 def _run_clips_job(job: Job) -> None:

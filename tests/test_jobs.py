@@ -147,3 +147,99 @@ def test_stuck_job_times_out_and_frees_the_queue(manager, tmp_path, monkeypatch)
         if next_job.is_terminal():
             break
         time.sleep(0.05)
+
+
+def test_abandoned_thread_cannot_relock_episode_or_override_timeout_result(manager, tmp_path, monkeypatch):
+    """T-0021-F1: a timed-out job's thread is abandoned, not killed, and may
+    still be running when the watchdog marks the job failed. Until that
+    thread actually returns: (a) resubmitting for the SAME episode must be
+    rejected, so a fresh job cannot run concurrently against the same output
+    files as the abandoned one; (b) the abandoned thread's own eventual
+    result must not overwrite the timeout failure already recorded."""
+    monkeypatch.setattr(jobs_mod, "JOB_TIMEOUT_S", 0.2)
+
+    release = threading.Event()
+
+    def hang_then_finish(*args, **kwargs):
+        release.wait(10)
+        raise jobs_mod.run_mod.CancelledError("late finish after abandonment")
+
+    monkeypatch.setattr(jobs_mod.run_mod, "run_episode", hang_then_finish)
+
+    job = _submit(manager, "stuck-ep", tmp_path)
+    for _ in range(100):
+        if job.status == "failed":
+            break
+        time.sleep(0.05)
+    assert job.status == "failed"
+    assert "time limit" in job.error
+
+    # The abandoned thread is still blocked on `release`: a second submit for
+    # the *same* episode must be rejected.
+    with pytest.raises(EpisodeBusyError):
+        _submit(manager, "stuck-ep", tmp_path)
+
+    # Let the abandoned thread finish; its late (non-failure) result must not
+    # clobber the timeout failure already recorded on the job.
+    release.set()
+    time.sleep(0.3)
+    assert job.status == "failed"
+    assert "time limit" in job.error
+
+    # Once the abandoned thread has actually returned, the episode frees up.
+    for _ in range(100):
+        try:
+            _submit(manager, "stuck-ep", tmp_path)
+            break
+        except EpisodeBusyError:
+            time.sleep(0.05)
+    else:
+        pytest.fail("episode stayed locked after its abandoned thread finished")
+
+
+def test_timeout_marks_episode_abandoned_before_job_goes_terminal(manager, tmp_path, monkeypatch):
+    """T-0021-F2: on timeout, _abandoned_episodes must record the episode as
+    busy strictly before the job's status becomes visible as terminal.
+    Otherwise there is a window where `_episode_busy_locked` sees neither an
+    active job (already terminal) nor an abandoned episode (not yet added),
+    letting a concurrent submit/delete race the still-running thread."""
+    monkeypatch.setattr(jobs_mod, "JOB_TIMEOUT_S", 0.2)
+
+    release = threading.Event()
+
+    def hang_then_finish(*args, **kwargs):
+        release.wait(10)
+        raise jobs_mod.run_mod.CancelledError("late finish after abandonment")
+
+    monkeypatch.setattr(jobs_mod.run_mod, "run_episode", hang_then_finish)
+
+    order: list[str] = []
+
+    class TrackingSet(set):
+        def add(self, item):
+            order.append("abandoned_add")
+            return super().add(item)
+
+    manager._abandoned_episodes = TrackingSet(manager._abandoned_episodes)
+
+    job = _submit(manager, "stuck-ep", tmp_path)
+    orig_finish_if_active = job.finish_if_active
+
+    def tracking_finish_if_active(*args, **kwargs):
+        order.append("finish_if_active")
+        return orig_finish_if_active(*args, **kwargs)
+
+    job.finish_if_active = tracking_finish_if_active
+
+    for _ in range(100):
+        if job.status == "failed":
+            break
+        time.sleep(0.05)
+    assert job.status == "failed"
+
+    assert order == ["abandoned_add", "finish_if_active"], (
+        "episode must be marked abandoned/busy before the job is exposed as "
+        f"terminal, got order {order}"
+    )
+
+    release.set()
