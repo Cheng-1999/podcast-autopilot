@@ -28,3 +28,22 @@ def test_probe_uses_contract_field_names() -> None:
     assert info["sample_fmt"] == "flt"
     assert info["duration"] == 1200.5
     assert info["input_i"] == -23.1
+
+
+def test_probe_audio_format_skips_loudness_measurement() -> None:
+    fake_ffprobe = {
+        "streams": [{"codec_type": "audio", "codec_name": "pcm_f32le", "sample_rate": "44100", "channels": 2, "sample_fmt": "flt"}],
+        "format": {"duration": "600.0"},
+    }
+    with mock.patch.object(probe_mod, "run_ffprobe_json", return_value=fake_ffprobe), mock.patch.object(
+        probe_mod, "measure_loudness"
+    ) as mock_loudness:
+        info = probe_mod.probe_audio_format(Path("fast.wav"))
+        mock_loudness.assert_not_called()
+
+    assert info["codec"] == "pcm_f32le"
+    assert info["sr"] == 44100
+    assert info["channels"] == 2
+    assert info["duration"] == 600.0
+    assert "input_i" not in info
+

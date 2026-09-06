@@ -290,7 +290,8 @@ def run_part(
         else:
             _emit(progress, stage, report.stem, "started")
             t0 = time.monotonic()
-            pause_plan = build_pause_plan(clean_wav, config)
+            known_lufs = report.loudness_after_clean.get("input_i") if report.loudness_after_clean else None
+            pause_plan = build_pause_plan(clean_wav, config, integrated_lufs=known_lufs)
             plan_mod.save_plan(pause_plan, plan_path)
             _record(cache, stage, key, profile_sha)
             _save_cache(cache_path, cache)
@@ -361,12 +362,17 @@ def run_part(
                 min_probability=config.filler_min_probability,
             )
             edit_plan = plan_mod.load_plan(plan_path)
-            edit_plan.items = transcribe_mod.merge_filler_items(edit_plan.items, candidates)
+            keep_spans = audit_mod._effective_keep_spans(edit_plan)
+            valid_candidates = [
+                c for c in candidates
+                if any(ks <= c["start"] and c["end"] <= ke for ks, ke in keep_spans)
+            ]
+            edit_plan.items = transcribe_mod.merge_filler_items(edit_plan.items, valid_candidates)
             result = audit_mod.audit_plan(edit_plan, clean_wav)
             if not result.ok:
                 raise RunError(f"plan-fillers produced an invalid plan for {source}: {'; '.join(result.errors)}")
             plan_mod.save_plan(edit_plan, plan_path)
-            _record(cache, stage, key, profile_sha, {"candidates": len(candidates)})
+            _record(cache, stage, key, profile_sha, {"candidates": len(valid_candidates)})
             _save_cache(cache_path, cache)
             elapsed = time.monotonic() - t0
             report.stages.append(StageOutcome(stage, "ran", elapsed))

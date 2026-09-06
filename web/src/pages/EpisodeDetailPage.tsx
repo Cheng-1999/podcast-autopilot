@@ -177,7 +177,7 @@ export const EpisodeDetailPage: React.FC = () => {
       if (e.key === "r" || e.key === "R") {
         if (runState.status !== "running") {
           e.preventDefault();
-          handleRun({ profile: "default", model: "medium", force: false, skip: [] });
+          handleRun({ profile: "default", model: "small", force: false, skip: [] });
         }
       }
     };

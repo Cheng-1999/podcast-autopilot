@@ -37,7 +37,7 @@ class Segment:
     words: list[Word] = field(default_factory=list)
 
 
-def _load_model(model_size: str, compute_type: str = "int8"):
+def _load_model(model_size: str, compute_type: str = "int8", cpu_threads: int | None = None):
     key = (model_size, compute_type)
     if key not in _MODEL_CACHE:
         # huggingface_hub lays the model cache out with symlinks; on Windows
@@ -48,11 +48,16 @@ def _load_model(model_size: str, compute_type: str = "int8"):
         os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
         from faster_whisper import WhisperModel
 
+        if cpu_threads is None:
+            cpu_count = os.cpu_count() or 4
+            cpu_threads = min(8, max(2, cpu_count))
+
         DEFAULT_MODELS_DIR.mkdir(parents=True, exist_ok=True)
         _MODEL_CACHE[key] = WhisperModel(
             model_size,
             device="cpu",
             compute_type=compute_type,
+            cpu_threads=cpu_threads,
             download_root=str(DEFAULT_MODELS_DIR),
         )
     return _MODEL_CACHE[key]
@@ -70,6 +75,7 @@ def transcribe_audio(
     model_size: str = "small",
     config: AppConfig | None = None,
     compute_type: str = "int8",
+    beam_size: int = 1,
 ) -> dict:
     """Transcribe audio to zh-TW with faster-whisper (CTranslate2, CPU, int8).
 
@@ -89,6 +95,7 @@ def transcribe_audio(
         initial_prompt=INITIAL_PROMPT_ZH_TW,
         word_timestamps=True,
         vad_filter=True,
+        beam_size=beam_size,
     )
 
     converter = opencc.OpenCC("s2twp")
@@ -216,7 +223,11 @@ def _filler_index(item_id: str) -> int:
         return 0
 
 
-def merge_filler_items(existing_items: list[PlanItem], candidates: list[dict]) -> list[PlanItem]:
+def merge_filler_items(
+    existing_items: list[PlanItem],
+    candidates: list[dict],
+    keep_spans: list[tuple[float, float]] | None = None,
+) -> list[PlanItem]:
     """Return the plan's item list with filler proposals replaced by `candidates`, idempotently.
 
     - A candidate whose [start, end] matches an existing filler item (within
@@ -231,6 +242,12 @@ def merge_filler_items(existing_items: list[PlanItem], candidates: list[dict]) -
     Running this twice with the same transcript yields the same item list,
     so plan-fillers never accumulates duplicate (overlapping) proposals.
     """
+    if keep_spans is not None:
+        candidates = [
+            c for c in candidates
+            if any(ks <= c["start"] and c["end"] <= ke for ks, ke in keep_spans)
+        ]
+
     non_filler = [it for it in existing_items if it.kind != "filler"]
     existing_fillers = [it for it in existing_items if it.kind == "filler"]
 
@@ -257,6 +274,12 @@ def merge_filler_items(existing_items: list[PlanItem], candidates: list[dict]) -
     for it in existing_fillers:
         if it.id not in matched_ids and it.enabled:
             kept.append(it)
+
+    if keep_spans is not None:
+        kept = [
+            it for it in kept
+            if any(ks <= it.start and it.end <= ke for ks, ke in keep_spans)
+        ]
 
     next_index = max((_filler_index(it.id) for it in kept), default=0) + 1
     new_items = filler_plan_items(unmatched, start_index=next_index)

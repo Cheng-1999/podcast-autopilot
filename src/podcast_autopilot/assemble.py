@@ -26,7 +26,7 @@ from .ffmpeg import (
     run_ffmpeg,
 )
 from .pauses import detect_silences
-from .probe import probe_audio
+from .probe import probe_audio, probe_audio_format
 
 SCHEMA_ID = "podcast-autopilot.assemble-receipt/v1"
 
@@ -457,14 +457,14 @@ def assemble_from_manifest(
         if path is not None and not path.is_file():
             raise AssembleError(f"{label} not found: {path}")
     for label, path in (("intro", intro_path), ("outro", outro_path)):
-        if path is not None and probe_audio(path, config)["duration"] < CROSSFADE_S:
+        if path is not None and probe_audio_format(path, config)["duration"] < CROSSFADE_S:
             raise AssembleError(f"{label} {path} is shorter than the {CROSSFADE_S:g}s crossfade")
 
     # Fail fast on malformed chapters (order, negativity) before minutes of ffmpeg
     # work; the duration bound is checked once the final length is known.
     chapter_starts = _chapter_starts(manifest.chapters)
 
-    part_infos = [probe_audio(part, config) for part in part_paths]
+    part_infos = [probe_audio_format(part, config) for part in part_paths]
     is_mono = all(info["channels"] == 1 for info in part_infos)
     fmt = _Format(sr=int(part_infos[0]["sr"]), channels=1 if is_mono else 2)
 
@@ -502,7 +502,7 @@ def assemble_from_manifest(
             tempdir, config,
         )
 
-        duration = probe_audio(loud_normalized, config)["duration"]
+        duration = probe_audio_format(loud_normalized, config)["duration"]
 
         ffmetadata_path = None
         chapters_json_path = None
@@ -540,7 +540,7 @@ def assemble_from_manifest(
                 "no MP3 written"
             )
 
-    output_info = probe_audio(output_mp3, config)
+    output_info = probe_audio_format(output_mp3, config)
 
     receipt = {
         "schema": SCHEMA_ID,

@@ -10,7 +10,7 @@ from .audit import audit_plan, sha256_of_file
 from .config import AppConfig, PauseConfig
 from .ffmpeg import run_ffmpeg, run_ffprobe_json
 from .plan import EditPlan, PlanItem, ProfileInfo, SourceInfo, SCHEMA_ID, save_plan
-from .probe import probe_audio
+from .probe import probe_audio, probe_audio_format
 
 _TIMESTAMP = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)"
 _START = re.compile(rf"silence_start:\s*({_TIMESTAMP})")
@@ -110,11 +110,26 @@ def _candidate_cuts(silences: list[tuple[float, float]], duration: float, p: Pau
     return accepted
 
 
-def build_pause_plan(audio_path: Path, config: AppConfig | None = None) -> EditPlan:
+def build_pause_plan(
+    audio_path: Path,
+    config: AppConfig | None = None,
+    integrated_lufs: float | None = None,
+) -> EditPlan:
     config = config or AppConfig()
-    info = probe_audio(audio_path, config)
     p = config.pauses or PauseConfig()
-    cuts = _candidate_cuts(detect_silences(audio_path, config, integrated_lufs=info.get("input_i")), info["duration"], p)
+    if integrated_lufs is None and _RELATIVE_NOISE.match(str(p.noise)):
+        info = probe_audio(audio_path, config)
+        integrated_lufs = info.get("input_i")
+        duration = info["duration"]
+        sr = info["sr"]
+        channels = info["channels"]
+    else:
+        info = probe_audio_format(audio_path, config)
+        duration = info["duration"]
+        sr = info["sr"]
+        channels = info["channels"]
+
+    cuts = _candidate_cuts(detect_silences(audio_path, config, integrated_lufs=integrated_lufs), duration, p)
     items = [PlanItem(id=f"cut-{idx:04d}", kind="cut", start=start, end=end,
                       reason=f"pause {length:.2f}s -> {length - (end-start):.2f}s", enabled=True)
              for idx, (start, end, length, _leading, _trailing) in enumerate(cuts, 1)]
@@ -122,12 +137,12 @@ def build_pause_plan(audio_path: Path, config: AppConfig | None = None) -> EditP
         # No pause was long enough to cut: a cut-only plan with zero items has
         # no complement for apply.py to render (nothing "kept"), so fall back
         # to an explicit identity keep spanning the whole file.
-        items = [PlanItem(id="keep-0001", kind="keep", start=0.0, end=info["duration"], reason="no cuts found", enabled=True)]
-    source = SourceInfo(path=str(audio_path), sha256=sha256_of_file(audio_path), duration=info["duration"],
-                        sr=info["sr"], channels=info["channels"])
+        items = [PlanItem(id="keep-0001", kind="keep", start=0.0, end=duration, reason="no cuts found", enabled=True)]
+    source = SourceInfo(path=str(audio_path), sha256=sha256_of_file(audio_path), duration=duration,
+                        sr=sr, channels=channels)
     profile = ProfileInfo(name=config.profile_name, max_removed_fraction=p.max_removed_fraction)
     crossfade = 0.02
-    predicted = info["duration"] - sum(item.end-item.start for item in items)
+    predicted = duration - sum(item.end-item.start for item in items)
     if items:
         predicted -= crossfade * len(items)  # complement yields one join per cut
     plan = EditPlan(schema=SCHEMA_ID, created=datetime.now(timezone.utc).isoformat(), source=source,

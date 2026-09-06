@@ -157,3 +157,17 @@ def test_merge_filler_items_preserves_human_enabled_and_drops_stale_proposals():
     assert fillers["filler-0004"].enabled is False and fillers["filler-0004"].start == 7.0
     assert [it.kind for it in merged if it.kind != "filler"] == ["keep"]
     assert [it.start for it in merged] == sorted(it.start for it in merged)
+
+
+def test_merge_filler_items_filters_candidates_outside_keep_spans():
+    from podcast_autopilot.plan import PlanItem
+    from podcast_autopilot.transcribe import merge_filler_items
+
+    base = [PlanItem(id="a", kind="keep", start=0.0, end=10.0)]
+    # Candidates: (1.0, 1.2) is inside keep span [0.0, 5.0], but (7.0, 7.3) is outside.
+    keep_spans = [(0.0, 5.0)]
+    merged = merge_filler_items(base, _cands((1.0, 1.2), (7.0, 7.3)), keep_spans=keep_spans)
+    fillers = [it for it in merged if it.kind == "filler"]
+    assert len(fillers) == 1
+    assert fillers[0].start == 1.0 and fillers[0].end == 1.2
+

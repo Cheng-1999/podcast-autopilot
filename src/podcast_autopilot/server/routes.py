@@ -178,7 +178,7 @@ async def create_upload(request: Request) -> dict:
         dest_path.write_bytes(await upload.read())
 
         try:
-            info = probe_mod.probe_audio(dest_path, config)
+            info = probe_mod.probe_audio_format(dest_path, config)
         except Exception as exc:
             dest_path.unlink(missing_ok=True)
             raise HTTPException(415, f"uploaded file failed to probe as audio: {exc}") from exc
@@ -199,7 +199,7 @@ async def create_upload(request: Request) -> dict:
     if not candidate.is_file():
         raise HTTPException(404, f"file not found: {candidate}")
     try:
-        info = probe_mod.probe_audio(candidate, config)
+        info = probe_mod.probe_audio_format(candidate, config)
     except Exception as exc:
         raise HTTPException(415, f"file failed to probe as audio: {exc}") from exc
     return {
