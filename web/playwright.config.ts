@@ -29,6 +29,7 @@ export default defineConfig({
   reporter: "list",
   use: {
     baseURL: BASE_URL,
+    locale: "zh-TW",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },

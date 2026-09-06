@@ -26,11 +26,21 @@ function readPlanItemEnabled(): boolean {
 }
 
 test("run the bundled example episode and save a plan edit through the real UI", async ({ page }) => {
+  // Dismiss onboarding tour if it auto-starts so smoke test can interact with episode table
+  await page.addInitScript(() => {
+    try {
+      window.localStorage.setItem("autopilot.locale", "zh-TW");
+      window.localStorage.setItem("autopilot.tour.status", "dismissed");
+    } catch {
+      // Ignore disabled localStorage in restricted browser modes
+    }
+  });
+
   // 1+2. Episodes list -> find the bundled example.
   await page.goto("/episodes");
   const row = page.getByTestId(`episode-row-${EPISODE_ID}`);
   await expect(row).toBeVisible({ timeout: 30_000 });
-  await expect(row).toContainText("EXAMPLE");
+  await expect(row).toContainText(/EXAMPLE|範例/);
   await row.click();
 
   await expect(page).toHaveURL(new RegExp(`/episodes/${EPISODE_ID.replace(".", "\\.")}$`));
@@ -46,11 +56,11 @@ test("run the bundled example episode and save a plan edit through the real UI",
   // synthetic episode should take well under a minute, but CPU whisper /
   // ffmpeg calls on a shared machine can be slow, so allow a few minutes.
   const status = page.getByTestId("episode-status");
-  await expect(status).toHaveText("已完成", { timeout: 4 * 60 * 1000 });
+  await expect(status).toHaveText(/已完成|Done|完了|완료/, { timeout: 4 * 60 * 1000 });
 
   // 5. Open the review screen for a part of that episode.
   const beforeEnabled = readPlanItemEnabled();
-  await page.getByRole("link", { name: "審查波形" }).click();
+  await page.locator("a[href$='/review']").click();
   await expect(page).toHaveURL(new RegExp(`/episodes/${EPISODE_ID.replace(".", "\\.")}/review$`));
 
   const toggle = page.getByTestId(`item-toggle-${PLAN_ITEM_ID}`);
@@ -72,7 +82,7 @@ test("run the bundled example episode and save a plan edit through the real UI",
   await saveButton.click();
   const resp = await putResponse;
   expect(resp.status(), "PUT .../plan should succeed (audit_plan must accept the toggle)").toBe(200);
-  await expect(page.getByText("已儲存")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText(/已儲存|已保存|Saved|保存済み|저장됨/)).toBeVisible({ timeout: 15_000 });
 
   // 7. The actual assertion of success: plan.json changed on disk, and the
   // toggled item's `enabled` field flipped exactly as expected.

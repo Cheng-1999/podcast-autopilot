@@ -176,6 +176,19 @@ Vite 6 + React 19 + TypeScript）。
   `audit`，沒過會顯示在該項目下方）→ Reapply（沿用 stage cache，只有真的被
   改動的 part 會重新 `audit`／`apply`，再重新 `assemble`）→ Deliverables 頁面
   播放最終 mp3、瀏覽並下載 clips。
+- **多語系支援（i18n）**：支援繁體中文（`zh-TW`，預設）、簡體中文（`zh-CN`）、
+  英文（`en`）、日文（`ja`）、韓文（`ko`）。語系解析優先級為：
+  使用者於狀態列選取並儲存於 `localStorage["autopilot.locale"]` >
+  瀏覽器偏好（`navigator.languages`）> 預設 `zh-TW`；
+  缺漏字串自動 fallback 至英文。所有數值、時間戳記與計數均遵循 `Intl.NumberFormat` 在地化格式。
+- **互動式引導導覽（Onboarding Tour）**：內建 16 步路由感知導覽，首次造訪
+  （`localStorage["autopilot.tour.status"]` 為空）自動啟動。可隨時點擊狀態列右上角的
+  `?` 按鈕重新播放；瀏覽器主控台執行 `localStorage.removeItem("autopilot.tour.status")`
+  可重設新使用者狀態。支援鍵盤 `Escape` 跳過與 `Tab`/`Shift+Tab` 焦點循環。
+- **翻譯貢獻規範**：語系辭典位於 `web/src/i18n/messages/`，以 `en.ts` 為型別單一真實來源
+  （`MessageKey`），新增字串需同步更新 5 個語系檔案，參數使用 `{{param}}` 插值，
+  並通過 `npm test`（`i18n-rendering.test.ts` 自動檢驗 5 語系 0 缺漏與 0 遺留未翻譯字串）。
+- 完整 16 步流程與架構細節請見 [`docs/DASHBOARD.md`](docs/DASHBOARD.md)。
 - **區網存取、沒有身分驗證**：uvicorn bind 在 `0.0.0.0`，同一區網的其他裝置
   可以用終端機印出的 LAN IP 連進來操作；不要把這個 port 對外網開放，也不要在
   不信任的網路上開著跑。
@@ -423,6 +436,18 @@ toolchain is Vite 6 + React 19 + TypeScript).
   parts you actually changed re-`audit`/`apply`, then `assemble` re-runs if
   the rendered audio changed) -> Deliverables screen to play the final MP3
   and browse/download clips.
+- **Localization (i18n)**: Supports Traditional Chinese (`zh-TW`, default), Simplified Chinese
+  (`zh-CN`), English (`en`), Japanese (`ja`), and Korean (`ko`). Locale resolution precedence:
+  user selection stored in `localStorage["autopilot.locale"]` > browser preference (`navigator.languages`) > default `zh-TW`;
+  missing keys fall back to English. All numbers, durations, and counts follow `Intl.NumberFormat` localization.
+- **Onboarding Guide (Tour)**: Built-in 16-step route-aware interactive tour that auto-launches on first visit
+  (`localStorage["autopilot.tour.status"]` is empty). Replay at any time via the `?` button on the top-right
+  of the status bar; reset first-time state via `localStorage.removeItem("autopilot.tour.status")`.
+  Supports `Escape` to dismiss and `Tab`/`Shift+Tab` focus cycling.
+- **Translation Contribution Rules**: Catalogs live under `web/src/i18n/messages/`, keyed by `en.ts` as the single
+  source of truth (`MessageKey`). Additions must update all 5 locale catalogs, use `{{param}}` interpolation,
+  and pass `npm test` (`i18n-rendering.test.ts` validates zero missing keys and zero unlocalized strings).
+- Detailed 16-step guide and architecture reference: [`docs/DASHBOARD.md`](docs/DASHBOARD.md).
 - **LAN-reachable, no authentication**: uvicorn binds `0.0.0.0`, so other
   devices on the same network can reach it at the LAN IP printed at
   startup. Do not expose this port to the internet or run it on an
