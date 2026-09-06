@@ -27,6 +27,8 @@ export const EpisodeDetailPage: React.FC = () => {
 
   const [runState, dispatch] = useReducer(runStateReducer, INITIAL_RUN_STATE);
   const [isLogOpen, setIsLogOpen] = useState<boolean>(true);
+  const [runProfile, setRunProfile] = useState<string>("default");
+  const [runModel, setRunModel] = useState<string>("small");
   const eventSourceCleanupRef = useRef<(() => void) | null>(null);
   const reapplyCaption = (location.state as { reapplyCaption?: string } | null)?.reapplyCaption ?? null;
 
@@ -177,13 +179,13 @@ export const EpisodeDetailPage: React.FC = () => {
       if (e.key === "r" || e.key === "R") {
         if (runState.status !== "running") {
           e.preventDefault();
-          handleRun({ profile: "default", model: "small", force: false, skip: [] });
+          handleRun({ profile: runProfile, model: runModel, force: false, skip: [] });
         }
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [runState.status, handleRun]);
+  }, [runState.status, handleRun, runProfile, runModel]);
 
   const isRunning = runState.status === "running";
   const statusInfo = getStatusDisplay(isRunning ? "running" : episode?.status, t);
@@ -328,6 +330,10 @@ export const EpisodeDetailPage: React.FC = () => {
           <RunControls
             profiles={profiles}
             isRunning={isRunning}
+            profile={runProfile}
+            model={runModel}
+            onProfileChange={setRunProfile}
+            onModelChange={setRunModel}
             onRun={handleRun}
             onCancel={handleCancel}
           />

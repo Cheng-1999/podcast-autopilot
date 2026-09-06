@@ -29,7 +29,7 @@ def _load_app_config(config_path: Optional[Path]) -> AppConfig:
     return load_config(config_path)
 
 
-VALID_WHISPER_MODEL_SIZES = ("small", "medium")
+VALID_WHISPER_MODEL_SIZES = ("small", "medium", "large-v3")
 
 
 def _validate_model_size(model: Optional[str]) -> None:
@@ -88,7 +88,7 @@ def apply(
 @app.command()
 def transcribe(
     audio_path: Path = typer.Argument(..., exists=True, readable=True),
-    model: Optional[str] = typer.Option(None, "--model", help="small|medium (default: config.whisper_model_size, else small)"),
+    model: Optional[str] = typer.Option(None, "--model", help="small|medium|large-v3 (default: config.whisper_model_size, else small)"),
     out_dir: Path = typer.Option(Path("out"), "--out-dir"),
     config_path: Optional[Path] = typer.Option(None, "--config", help="Path to a config YAML file"),
 ) -> None:
@@ -145,7 +145,7 @@ def clean(
 @app.command("plan-fillers")
 def plan_fillers(
     audio_path: Path = typer.Argument(..., exists=True, readable=True),
-    model: Optional[str] = typer.Option(None, "--model", help="small|medium (default: config.whisper_model_size, else small)"),
+    model: Optional[str] = typer.Option(None, "--model", help="small|medium|large-v3 (default: config.whisper_model_size, else small)"),
     out_dir: Path = typer.Option(Path("out"), "--out-dir"),
     config_path: Optional[Path] = typer.Option(None, "--config", help="Path to a config YAML file"),
 ) -> None:
@@ -211,7 +211,7 @@ def plan_fillers(
 @app.command()
 def clips(
     audio_path: Path = typer.Argument(..., exists=True, readable=True),
-    model: Optional[str] = typer.Option(None, "--model", help="small|medium (default: config.whisper_model_size, else small)"),
+    model: Optional[str] = typer.Option(None, "--model", help="small|medium|large-v3 (default: config.whisper_model_size, else small)"),
     render: bool = typer.Option(False, "--render", help="Also cut each candidate to out/<stem>/clips/<n>.mp3 + .srt"),
     out_dir: Path = typer.Option(Path("out"), "--out-dir"),
     config_path: Optional[Path] = typer.Option(None, "--config", help="Path to a config YAML file"),
@@ -364,7 +364,7 @@ def assemble(
 def run(
     episode_yaml: Path = typer.Argument(..., exists=True, readable=True),
     profile: str = typer.Option("default", "--profile"),
-    model: Optional[str] = typer.Option(None, "--model", help="small|medium (default: config.whisper_model_size, else small)"),
+    model: Optional[str] = typer.Option(None, "--model", help="small|medium|large-v3 (default: config.whisper_model_size, else small)"),
     out_dir: Path = typer.Option(Path("out"), "--out-dir"),
     skip: list[str] = typer.Option([], "--skip", help=f"Stage(s) to skip: {run_mod.ALL_STAGES}"),
     force: bool = typer.Option(False, "--force", help="Ignore cached stage outputs and rerun everything"),

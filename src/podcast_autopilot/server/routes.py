@@ -118,7 +118,7 @@ def health() -> dict:
         ffmpeg_ok = False
 
     whisper_models = {}
-    for size in ("small", "medium"):
+    for size in cli_mod.VALID_WHISPER_MODEL_SIZES:
         snapshots = DEFAULT_MODELS_DIR / f"models--Systran--faster-whisper-{size}" / "snapshots"
         whisper_models[size] = snapshots.is_dir() and any(snapshots.iterdir())
 
@@ -315,6 +315,27 @@ def run_episode(episode_id: str, body: RunRequest, request: Request) -> dict:
         force=body.force,
     )
     return job.to_dict()
+
+
+@router.delete("/episodes/{episode_id}")
+def delete_episode(episode_id: str, request: Request) -> dict:
+    """Remove an episode's manifest, generated output, and uploaded media."""
+    project_root = _project_root(request)
+    job_manager = _job_manager(request)
+    ref = _ref_or_404(project_root, episode_id)
+    if ref.example:
+        raise HTTPException(400, "cannot delete a bundled example manifest")
+    if job_manager.active_job_for_episode(episode_id) is not None:
+        raise HTTPException(409, "cannot delete an episode while a job is running")
+
+    ref.path.unlink(missing_ok=True)
+    episode_root, _report_path, _parts_dir = episodes_mod.episode_paths(project_root, episode_id)
+    if episode_root.is_dir():
+        shutil.rmtree(episode_root)
+    media_dir = project_root / "media" / episode_id
+    if media_dir.is_dir():
+        shutil.rmtree(media_dir)
+    return {"ok": True}
 
 
 @router.delete("/episodes/{episode_id}/parts/{part_id}/clips")

@@ -88,6 +88,10 @@ describe("representative component rendering across locales", () => {
         React.createElement(RunControls, {
           profiles: ["default", "fast"],
           isRunning: false,
+          profile: "default",
+          model: "small",
+          onProfileChange: () => {},
+          onModelChange: () => {},
           onRun: () => {},
           onCancel: () => {},
         })

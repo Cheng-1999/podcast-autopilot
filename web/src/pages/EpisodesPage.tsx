@@ -1,7 +1,7 @@
-import React from "react";
+import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { fetchEpisodes } from "../api/client";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { deleteEpisode, fetchEpisodes } from "../api/client";
 import { getStatusDisplay } from "../api/status";
 import type { EpisodeSummary } from "../api/types";
 import { useLocale } from "../i18n";
@@ -26,11 +26,28 @@ function formatTimestamp(ts: number | null | undefined, locale: string): string 
 export const EpisodesPage: React.FC = () => {
   const { t, locale } = useLocale();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const { data: episodes, isLoading, error } = useQuery<EpisodeSummary[]>({
     queryKey: ["episodes"],
     queryFn: fetchEpisodes,
     refetchInterval: 5000,
   });
+
+  const handleDelete = async (ep: EpisodeSummary) => {
+    if (!window.confirm(t("episodes.deleteConfirm", { title: ep.title || ep.id }))) return;
+    setDeleteError(null);
+    setDeletingId(ep.id);
+    try {
+      await deleteEpisode(ep.id);
+      await queryClient.invalidateQueries({ queryKey: ["episodes"] });
+    } catch (e) {
+      setDeleteError((e as Error).message);
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
@@ -89,6 +106,21 @@ export const EpisodesPage: React.FC = () => {
           }}
         >
           {t("episodes.loadError", { message: (error as Error).message })}
+        </div>
+      )}
+
+      {deleteError && (
+        <div
+          style={{
+            padding: "12px",
+            backgroundColor: "rgba(229, 72, 77, 0.1)",
+            border: "1px solid rgba(229, 72, 77, 0.3)",
+            borderRadius: "var(--radius-max)",
+            color: "var(--semantic-red)",
+            fontSize: "var(--font-size-sm)",
+          }}
+        >
+          {t("episodes.deleteError", { message: deleteError })}
         </div>
       )}
 
@@ -311,16 +343,31 @@ export const EpisodesPage: React.FC = () => {
 
                     {/* Actions */}
                     <td style={{ padding: "0 12px", whiteSpace: "nowrap" }}>
-                      <button
-                        type="button"
-                        className="dense-btn"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate(`/episodes/${ep.id}`);
-                        }}
-                      >
-                        {t("common.open")}
-                      </button>
+                      <div style={{ display: "inline-flex", gap: "6px" }}>
+                        <button
+                          type="button"
+                          className="dense-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/episodes/${ep.id}`);
+                          }}
+                        >
+                          {t("common.open")}
+                        </button>
+                        {!ep.example && (
+                          <button
+                            type="button"
+                            className="dense-btn danger"
+                            disabled={deletingId === ep.id}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void handleDelete(ep);
+                            }}
+                          >
+                            {deletingId === ep.id ? t("episodes.deleting") : t("episodes.delete")}
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );

@@ -58,7 +58,7 @@ def test_health_reports_ffmpeg_and_models(client):
     assert resp.status_code == 200
     body = resp.json()
     assert "ffmpeg_ok" in body
-    assert set(body["whisper_models"]) == {"small", "medium"}
+    assert set(body["whisper_models"]) == {"small", "medium", "large-v3"}
 
 
 def test_shutdown_responds_ok_and_schedules_process_exit(client, monkeypatch):
@@ -87,6 +87,63 @@ def test_list_episodes_sees_bundled_example(client):
     example = next(e for e in episodes if e["id"] == "episode.example")
     assert example["example"] is True
     assert example["status"] == "never-run"
+
+
+def test_delete_episode_removes_manifest_output_and_media(client):
+    c, root = client
+    episodes_dir = root / "episodes"
+    episodes_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = episodes_dir / "my-ep.yaml"
+    manifest_path.write_text(
+        yaml.safe_dump({"title": "My Ep", "episode": 1, "parts": ["part1.wav"]}),
+        encoding="utf-8",
+    )
+    out_dir = root / "out" / "my-ep"
+    out_dir.mkdir(parents=True)
+    (out_dir / "RUN_REPORT.md").write_text("# Run Report: my-ep", encoding="utf-8")
+    media_dir = root / "media" / "my-ep"
+    media_dir.mkdir(parents=True)
+    (media_dir / "part1.wav").write_bytes(b"fake")
+
+    resp = c.delete("/api/episodes/my-ep")
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": True}
+    assert not manifest_path.exists()
+    assert not out_dir.exists()
+    assert not media_dir.exists()
+
+    assert c.get("/api/episodes/my-ep").status_code == 404
+
+
+def test_delete_episode_unknown_id_is_404(client):
+    c, _root = client
+    assert c.delete("/api/episodes/does-not-exist").status_code == 404
+
+
+def test_delete_episode_rejects_bundled_example(client):
+    c, root = client
+    resp = c.delete("/api/episodes/episode.example")
+    assert resp.status_code == 400
+    assert (root / "examples" / "episode.example.yaml").exists()
+
+
+def test_delete_episode_rejects_while_job_running(client):
+    c, root = client
+    episodes_dir = root / "episodes"
+    episodes_dir.mkdir(parents=True, exist_ok=True)
+    (episodes_dir / "running-ep.yaml").write_text(
+        yaml.safe_dump({"title": "Running Ep", "episode": 1, "parts": ["../examples/part1.wav"]}),
+        encoding="utf-8",
+    )
+
+    run_resp = c.post("/api/episodes/running-ep/run", json={"force": True})
+    job_id = run_resp.json()["id"]
+    try:
+        resp = c.delete("/api/episodes/running-ep")
+        assert resp.status_code == 409
+    finally:
+        c.post(f"/api/jobs/{job_id}/cancel")
+        _wait_for_job(c, job_id)
 
 
 def test_run_job_completes_and_sse_covers_every_stage(client):

@@ -30,7 +30,8 @@ voice_chain:
   adeclick: false
   adeclip: false
 
-# faster-whisper model size: "small" (default) or "medium". Cached under
+# faster-whisper model size: "small" (default), "medium", or "large-v3" for
+# the highest accuracy (slowest, largest download). Cached under
 # tools/models/ (gitignored), downloaded from Hugging Face on first use.
 whisper_model_size: small
 

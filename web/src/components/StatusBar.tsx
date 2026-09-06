@@ -51,9 +51,8 @@ export const StatusBar: React.FC<StatusBarProps> = ({ health, activeJob, onShutd
 
   const ffmpegOk = health?.ffmpeg_ok ?? false;
   const models = health?.whisper_models || {};
-  const modelSmallOk = models.small ?? false;
-  const modelMedOk = models.medium ?? false;
-  const cachedCount = (modelSmallOk ? 1 : 0) + (modelMedOk ? 1 : 0);
+  const modelCount = Object.keys(models).length;
+  const cachedCount = Object.values(models).filter(Boolean).length;
   const host = typeof window !== "undefined" ? window.location.host : "localhost:8765";
 
   return (
@@ -165,7 +164,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({ health, activeJob, onShutd
         {/* Whisper models cached */}
         <div style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
           <span className={`status-dot ${cachedCount > 0 ? "green" : "amber"}`} />
-          <span className="mono">{t("status.models", { count: cachedCount })}</span>
+          <span className="mono">{t("status.models", { count: cachedCount, total: modelCount })}</span>
         </div>
 
         {/* Free disk */}

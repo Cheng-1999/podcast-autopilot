@@ -42,6 +42,9 @@ export function registerLocalPath(path: string): Promise<UploadResponse> {
 export function createEpisode(body: EpisodeCreateBody): Promise<{ id: string; path: string }> {
   return jsonRequest(`${API_BASE}/episodes`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 }
+export function deleteEpisode(episodeId: string): Promise<{ ok: boolean }> {
+  return jsonRequest(`${API_BASE}/episodes/${encodeURIComponent(episodeId)}`, { method: "DELETE" });
+}
 export function fetchClips(episodeId: string, partId: string): Promise<ClipsResponse> {
   return jsonRequest(`${API_BASE}/episodes/${encodeURIComponent(episodeId)}/parts/${encodeURIComponent(partId)}/clips`);
 }

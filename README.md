@@ -37,7 +37,7 @@ python -m venv .venv
 - `python -m podcast_autopilot selftest`：產生一段 30 秒的合成音檔
   （純音 + 白噪音），跑過完整的 probe → plan（identity keep）→ audit →
   apply → receipt 流程，並確認輸出長度與輸入誤差在 50ms 以內。
-- `python -m podcast_autopilot transcribe <audio> [--model small|medium]`：
+- `python -m podcast_autopilot transcribe <audio> [--model small|medium|large-v3]`：
   用 faster-whisper（CTranslate2、CPU、int8）轉錄成繁體中文，輸出到
   `out/<檔名>/`：`transcript.json`（segments + 逐字 words，含
   start/end/probability）、`transcript.srt`、`transcript.md`（每個
@@ -47,7 +47,7 @@ python -m venv .venv
   Hugging Face 下載）。Whisper 對 `language="zh"` 常常偏向簡體輸出，
   所以轉錄結果會再跑一次 `opencc s2twp` 轉換成繁體，並記錄實際改了幾個
   字（`opencc_chars_changed`）。
-- `python -m podcast_autopilot plan-fillers <audio> [--model small|medium]`：
+- `python -m podcast_autopilot plan-fillers <audio> [--model small|medium|large-v3]`：
   在 `out/<檔名>/transcript.json` 已存在時直接重用（否則先轉錄一次），
   偵測語助詞（預設 `嗯`、`呃`、`啊`、`那個`、`就是說`、`然後`，可在設定檔
   `filler_words` 覆寫），只有「該詞前後都有大於 `filler_pause_threshold_s`
@@ -74,10 +74,10 @@ python -m venv .venv
   crossfade、sidechain-ducked 的背景音樂、章節標記，輸出打好 ID3 tag 的
   `out/<episode>/ep<NN>/ep<NN>.mp3` 與 receipt。manifest 結構見
   `examples/episode.example.yaml`。
-- `python -m podcast_autopilot clips <audio> [--model small|medium] [--render]`：
+- `python -m podcast_autopilot clips <audio> [--model small|medium|large-v3] [--render]`：
   在 `out/<檔名>/transcript.json` 已存在時直接重用（否則先轉錄一次），從逐字稿切出
   5～10 個 30～90 秒的候選片段，見下面「Clips」。
-- `python -m podcast_autopilot run <episode.yaml> [--profile default] [--model small|medium] [--skip STAGE ...] [--force] [--dry-run]`：
+- `python -m podcast_autopilot run <episode.yaml> [--profile default] [--model small|medium|large-v3] [--skip STAGE ...] [--force] [--dry-run]`：
   一個指令跑完整條後製線，見下面「一鍵執行」。
 
 ## 一鍵執行（`run`）
@@ -213,7 +213,7 @@ Vite 6 + React 19 + TypeScript）。
 | `loudness_target_i` / `loudness_target_tp` | 整體響度（LUFS）/ 真峰值（dBTP）目標 |
 | `denoise.engine` | `auto`\|`noisereduce`\|`afftdn`\|`off` |
 | `voice_chain.*` | highpass、de-esser、compressor 各項參數 |
-| `whisper_model_size` | `small`\|`medium`（`transcribe`／`plan-fillers`／`run` 的預設模型） |
+| `whisper_model_size` | `small`\|`medium`\|`large-v3`（`transcribe`／`plan-fillers`／`run` 的預設模型） |
 | `filler_words` / `filler_pause_threshold_s` / `filler_min_probability` | 語助詞偵測門檻，見上面 `plan-fillers` 說明 |
 | `pauses.*` | 停頓收緊的閾值（`noise`、`min_duration`、`max_keep`、`target`、`guard`、`min_segment`、`head`、`tail`、`max_removed_fraction`）。`noise` 預設 `"0LU"`＝相對於該檔整合響度（-16 LUFS 的 clean 檔即 -16dB、-35 LUFS 的原始檔即 -35dB）；寫 `"-35dB"` 則是絕對 dBFS 門檻。`run` 是在 clean 過的 -16 LUFS 音檔上找停頓，固定 -35dB 在那上面找不到任何超過 `max_keep` 的停頓，所以改成相對值 |
 
@@ -336,7 +336,7 @@ overlaps, in-range, known kinds only) -> `apply` (ffmpeg renders `keep`
 segments with a short acrossfade at each join) -> `receipt` (sha256 of
 source/plan/output + ffmpeg version + post-render loudness).
 
-`transcribe <audio> [--model small|medium]` runs faster-whisper
+`transcribe <audio> [--model small|medium|large-v3]` runs faster-whisper
 (CTranslate2, CPU, `compute_type=int8`, model cached under `tools/models/`,
 gitignored, downloaded with `HF_HUB_DISABLE_SYMLINKS=1` because symlinks
 need Developer Mode on Windows and otherwise fail with WinError 1314) with `language="zh"`, `word_timestamps=True`, `vad_filter=True`.
@@ -345,7 +345,7 @@ re-run through `opencc s2twp`; the number of characters that pass changed is
 logged as `opencc_chars_changed`. Writes `out/<stem>/transcript.{json,srt,md}`
 (the `.md` has one `[mm:ss]`-prefixed paragraph per segment).
 
-`plan-fillers <audio> [--model small|medium]` reuses `transcript.json` if
+`plan-fillers <audio> [--model small|medium|large-v3]` reuses `transcript.json` if
 present, flags filler words (`filler_words` in config, default 嗯/呃/啊/那個/
 就是說/然後) that are isolated by a pause > `filler_pause_threshold_s` (0.2s)
 on both sides with `probability > filler_min_probability` (0.5), and writes
@@ -371,7 +371,7 @@ with `winget install Gyan.FFmpeg` or drop the binaries into
 ### One-command run
 
 `python -m podcast_autopilot run <episode.yaml> [--profile default]
-[--model small|medium] [--skip STAGE ...] [--force] [--dry-run]` runs, per
+[--model small|medium|large-v3] [--skip STAGE ...] [--force] [--dry-run]` runs, per
 part in the manifest, `probe -> clean -> plan-pauses -> transcribe ->
 plan-fillers -> audit -> apply`, then `assemble`s all parts into one
 episode. Or just run `.\run.ps1 examples\episode.example.yaml` (creates
@@ -483,7 +483,7 @@ so edits are never committed):
 | `loudness_target_i` / `loudness_target_tp` | integrated loudness (LUFS) / true peak (dBTP) target |
 | `denoise.engine` | `auto`\|`noisereduce`\|`afftdn`\|`off` |
 | `voice_chain.*` | highpass, de-esser, compressor parameters |
-| `whisper_model_size` | `small`\|`medium`, default model for `transcribe`/`plan-fillers`/`run` |
+| `whisper_model_size` | `small`\|`medium`\|`large-v3`, default model for `transcribe`/`plan-fillers`/`run` |
 | `filler_words` / `filler_pause_threshold_s` / `filler_min_probability` | filler-word detection thresholds |
 | `pauses.*` | pause-tightening thresholds (`noise`, `min_duration`, `max_keep`, `target`, `guard`, `min_segment`, `head`, `tail`, `max_removed_fraction`). `noise` defaults to `"0LU"` = relative to the file's integrated loudness (-16dB on a -16 LUFS cleaned part, -35dB on a -35 LUFS raw take); `"-35dB"` is an absolute dBFS threshold. `run` detects pauses on the cleaned -16 LUFS audio, where a fixed -35dB never finds a pause longer than `max_keep` |
 
@@ -502,7 +502,9 @@ re-renders `audit`/`apply`/`assemble` for the part(s) you touched.
 
 - **CPU-only timing**: transcription is the most expensive stage —
   `small` runs at roughly 1.8-2.2x real time; `medium` is more accurate
-  but has not been benchmarked end-to-end on this machine. Denoise, the
+  but slower, and `large-v3` is the most accurate and slowest of the
+  three -- reach for it when `medium` still mis-transcribes too much.
+  Denoise, the
   voice chain, and pause detection are single-pass ffmpeg filters, far
   cheaper than transcription. There is no GPU path.
 - **Whisper hallucination**: the `small` model occasionally repeats

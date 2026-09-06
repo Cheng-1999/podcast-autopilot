@@ -48,7 +48,7 @@ with st.sidebar:
     st.header("Episode")
     episode_yaml_str = st.text_input("episode.yaml path", value="examples/episode.example.yaml")
     profile = st.text_input("profile", value="default")
-    model_size = st.selectbox("whisper model", ["small", "medium"], index=0)
+    model_size = st.selectbox("whisper model", ["small", "medium", "large-v3"], index=0)
     out_dir_str = st.text_input("out dir", value="out")
     force = st.checkbox("--force (ignore cache, rerun everything)", value=False)
     run_clicked = st.button("Run", type="primary")

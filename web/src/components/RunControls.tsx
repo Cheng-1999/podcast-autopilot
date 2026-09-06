@@ -6,6 +6,10 @@ import { formatCount } from "../lib/format";
 interface RunControlsProps {
   profiles: string[];
   isRunning: boolean;
+  profile: string;
+  model: string;
+  onProfileChange: (profile: string) => void;
+  onModelChange: (model: string) => void;
   onRun: (options: { profile: string; model: string; force: boolean; skip: string[] }) => void;
   onCancel: () => void;
 }
@@ -13,12 +17,14 @@ interface RunControlsProps {
 export const RunControls: React.FC<RunControlsProps> = ({
   profiles,
   isRunning,
+  profile,
+  model,
+  onProfileChange,
+  onModelChange,
   onRun,
   onCancel,
 }) => {
   const { t, locale } = useLocale();
-  const [profile, setProfile] = useState<string>("default");
-  const [model, setModel] = useState<string>("small");
   const [force, setForce] = useState<boolean>(false);
   const [skipStages, setSkipStages] = useState<string[]>([]);
   const [showSkipDropdown, setShowSkipDropdown] = useState<boolean>(false);
@@ -60,7 +66,7 @@ export const RunControls: React.FC<RunControlsProps> = ({
             id="profile-select"
             className="dense-select"
             value={profile}
-            onChange={(e) => setProfile(e.target.value)}
+            onChange={(e) => onProfileChange(e.target.value)}
             disabled={isRunning}
           >
             {profiles.map((p) => (
@@ -80,11 +86,12 @@ export const RunControls: React.FC<RunControlsProps> = ({
             id="model-select"
             className="dense-select"
             value={model}
-            onChange={(e) => setModel(e.target.value)}
+            onChange={(e) => onModelChange(e.target.value)}
             disabled={isRunning}
           >
             <option value="small">small ({t("controls.fast")})</option>
             <option value="medium">medium ({t("controls.accurate")})</option>
+            <option value="large-v3">large-v3 ({t("controls.high")})</option>
           </select>
         </div>
 

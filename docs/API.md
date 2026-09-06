@@ -297,6 +297,23 @@ Returns full episode detail, including per-part stage tables parsed from `RUN_RE
 
 ---
 
+### `DELETE /api/episodes/{id}`
+
+Deletes an episode: its manifest (`episodes/{id}.yaml`), generated output (`out/{id}/`), and uploaded media (`media/{id}/`). Irreversible.
+
+#### Response (200 OK)
+
+```json
+{ "ok": true }
+```
+
+#### Error Responses
+- `400 Bad Request`: `{id}` is a bundled example manifest (`examples/*.yaml`), which cannot be deleted.
+- `404 Not Found`: Episode with ID `{id}` not found.
+- `409 Conflict`: A job is currently running for this episode; cancel it first.
+
+---
+
 ### `GET /api/episodes/{id}/report`
 
 Returns the raw markdown contents of `RUN_REPORT.md` (`text/plain; charset=utf-8`).
@@ -335,7 +352,7 @@ Enqueues a background pipeline execution job for episode `{id}`. Jobs are strict
 ```
 
 - `profile` *(string, optional, default: "default")*: Profile name matching `profiles/<profile>.yaml` or built-in defaults.
-- `model` *(string, optional)*: Whisper model size (`"small"` or `"medium"`). If omitted, uses profile default.
+- `model` *(string, optional)*: Whisper model size (`"small"`, `"medium"`, or `"large-v3"`). If omitted, uses profile default.
 - `force` *(boolean, optional, default: false)*: Force re-execution of cached stages.
 - `skip` *(array of strings, optional)*: List of stages to skip (`"probe"`, `"clean"`, `"plan-pauses"`, `"transcribe"`, `"plan-fillers"`, `"audit"`, `"apply"`, `"assemble"`).
 
