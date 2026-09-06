@@ -340,6 +340,61 @@ def _filler_index(item_id: str) -> int:
         return 0
 
 
+def _find_matching_filler(
+    candidate: dict,
+    existing_fillers: list[PlanItem],
+    matched_ids: set[str],
+) -> PlanItem | None:
+    """Find the existing filler item corresponding to `candidate`.
+
+    Matches either:
+    1. Exact boundary match within FILLER_MATCH_TOLERANCE_S.
+    2. Overlapping span (or close proximity with matching word) when detection
+       boundaries shifted due to energy-onset snapping or pre/post-roll padding.
+    """
+    for it in existing_fillers:
+        if it.id in matched_ids:
+            continue
+        if (
+            abs(it.start - candidate["start"]) <= FILLER_MATCH_TOLERANCE_S
+            and abs(it.end - candidate["end"]) <= FILLER_MATCH_TOLERANCE_S
+        ):
+            return it
+
+    cand_start = candidate["start"]
+    cand_end = candidate["end"]
+    cand_word = candidate.get("word", "").strip()
+
+    best_match: PlanItem | None = None
+    best_score: float = -1.0
+
+    for it in existing_fillers:
+        if it.id in matched_ids:
+            continue
+        overlap = min(it.end, cand_end) - max(it.start, cand_start)
+        word_matches = bool(
+            cand_word and (
+                it.reason == f"filler:{cand_word}"
+                or it.reason.startswith(f"filler:{cand_word} ")
+                or f":{cand_word}" in it.reason
+            )
+        )
+        if overlap > 0:
+            score = overlap + (10.0 if word_matches else 0.0)
+            if score > best_score:
+                best_score = score
+                best_match = it
+        elif word_matches:
+            dist = max(0.0, max(it.start, cand_start) - min(it.end, cand_end))
+            if dist <= 0.5:
+                score = 5.0 - dist
+                if score > best_score:
+                    best_score = score
+                    best_match = it
+
+    return best_match
+
+
 def merge_filler_items(
     existing_items: list[PlanItem],
     candidates: list[dict],
@@ -347,9 +402,11 @@ def merge_filler_items(
 ) -> list[PlanItem]:
     """Return the plan's item list with filler proposals replaced by `candidates`, idempotently.
 
-    - A candidate whose [start, end] matches an existing filler item (within
-      FILLER_MATCH_TOLERANCE_S) keeps that item as-is, including its id and
-      any `enabled=true` a human already set.
+    - A candidate that matches an existing filler item (either exact within
+      FILLER_MATCH_TOLERANCE_S, or overlapping/shifted due to energy-onset
+      snapping/padding) updates that item's [start, end] boundaries and reason
+      to the newly detected boundaries, while preserving its id and any
+      `enabled=true` a human already set.
     - Existing disabled filler proposals that no longer match any candidate
       are dropped (they were only ever proposals).
     - Existing *enabled* filler items that no longer match are kept: a human
@@ -372,19 +429,21 @@ def merge_filler_items(
     unmatched: list[dict] = []
     matched_ids: set[str] = set()
     for c in candidates:
-        match = next(
-            (
-                it
-                for it in existing_fillers
-                if it.id not in matched_ids
-                and abs(it.start - c["start"]) <= FILLER_MATCH_TOLERANCE_S
-                and abs(it.end - c["end"]) <= FILLER_MATCH_TOLERANCE_S
-            ),
-            None,
-        )
+        match = _find_matching_filler(c, existing_fillers, matched_ids)
         if match is not None:
             matched_ids.add(match.id)
-            kept.append(match)
+            cand_word = c.get("word", "")
+            cand_prob = c.get("probability", 1.0)
+            reason = f"filler:{cand_word} p={cand_prob:.2f}" if cand_word else (match.reason or "filler")
+            updated = PlanItem(
+                id=match.id,
+                kind=match.kind,
+                start=c["start"],
+                end=c["end"],
+                reason=reason,
+                enabled=match.enabled,
+            )
+            kept.append(updated)
         else:
             unmatched.append(c)
 

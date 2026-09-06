@@ -43,7 +43,8 @@ STAGE_VERSIONS: dict[str, int] = {
     # "0LU"); v1 plans made on cleaned audio with the absolute -35dB found nothing.
     "plan-pauses": 2,
     "transcribe": 1,
-    "plan-fillers": 1,
+    # v2: energy-onset snapping + pre/post-roll padding to capture word start.
+    "plan-fillers": 2,
     "audit": 1,
     "apply": 1,
     "assemble": 1,

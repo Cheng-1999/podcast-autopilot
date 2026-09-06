@@ -294,6 +294,27 @@ def test_run_episode_plan_fillers_reruns_when_plan_pauses_was_invalidated(tmp_pa
         assert statuses["apply"] == "ran"
 
 
+def test_plan_fillers_stage_version_v2_invalidates_v1_cache(tmp_path: Path):
+    from podcast_autopilot.run import STAGE_VERSIONS, _cache_hit
+
+    assert STAGE_VERSIONS["plan-fillers"] == 2
+
+    fake_file = tmp_path / "plan.json"
+    fake_file.write_text("{}", encoding="utf-8")
+    cache = {
+        "plan-fillers": {
+            "cache_key": "abc",
+            "profile_sha256": "def",
+            "version": 1,
+        }
+    }
+    # Version 1 cache entry must NOT hit for plan-fillers (now v2)
+    assert not _cache_hit(cache, "plan-fillers", "abc", "def", [fake_file])
+    # Version 2 cache entry hits
+    cache["plan-fillers"]["version"] = 2
+    assert _cache_hit(cache, "plan-fillers", "abc", "def", [fake_file])
+
+
 def test_run_episode_relative_out_dir_with_manifest_in_subdirectory(tmp_path: Path, monkeypatch):
     """The bundled layout: manifest in examples/, default --out-dir "out" relative
     to the repo root. assemble resolves manifest-relative part paths, so the

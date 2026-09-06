@@ -265,6 +265,34 @@ def test_merge_filler_items_filters_candidates_outside_keep_spans():
     assert fillers[0].start == 1.0 and fillers[0].end == 1.2
 
 
+def test_merge_filler_items_resnaps_boundaries_and_preserves_human_decision():
+    from podcast_autopilot.plan import PlanItem
+    from podcast_autopilot.transcribe import merge_filler_items
+
+    existing = [
+        PlanItem(id="a", kind="keep", start=0.0, end=10.0),
+        PlanItem(id="filler-0001", kind="filler", start=1.0, end=1.2, reason="filler:嗯 p=0.80", enabled=True),
+        PlanItem(id="filler-0002", kind="filler", start=5.0, end=5.3, reason="filler:然後 p=0.85", enabled=False),
+    ]
+    # New detection with shifted boundaries (energy onset snapping + pre-roll/post-roll):
+    # filler-0001 shifted from (1.0, 1.2) to (0.85, 1.25)
+    # filler-0002 shifted from (5.0, 5.3) to (4.80, 5.35)
+    cands = [
+        {"word": "嗯", "start": 0.85, "end": 1.25, "probability": 0.90},
+        {"word": "然後", "start": 4.80, "end": 5.35, "probability": 0.92},
+    ]
+    merged = merge_filler_items(existing, cands)
+    fillers = {it.id: it for it in merged if it.kind == "filler"}
+    assert set(fillers) == {"filler-0001", "filler-0002"}
+    # Boundaries re-snapped to new candidate boundaries
+    assert fillers["filler-0001"].start == 0.85 and fillers["filler-0001"].end == 1.25
+    assert fillers["filler-0001"].enabled is True
+    assert fillers["filler-0001"].reason == "filler:嗯 p=0.90"
+    assert fillers["filler-0002"].start == 4.80 and fillers["filler-0002"].end == 5.35
+    assert fillers["filler-0002"].enabled is False
+    assert fillers["filler-0002"].reason == "filler:然後 p=0.92"
+
+
 def test_detect_fillers_applies_pre_roll_and_post_roll_padding():
     words = [
         Word(word="今天", start=0.0, end=0.5, probability=0.9),

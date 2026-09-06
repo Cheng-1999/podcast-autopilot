@@ -46,6 +46,14 @@ whisper_language: null
 filler_words: [嗯, 呃, 啊, 那個, 就是說, 然後]
 filler_pause_threshold_s: 0.2
 filler_min_probability: 0.5
+# Pre-roll / post-roll expansion for filler proposals (see `plan-fillers`):
+# expands detected candidate boundaries by these margins and snaps to acoustic
+# energy onset when audio is available (captures true word start, e.g. "然後").
+filler_pre_roll_s: 0.15
+filler_post_roll_s: 0.05
+# Additional padding applied when carving filler cuts out of keep spans during `apply`.
+filler_carve_padding_start_s: 0.0
+filler_carve_padding_end_s: 0.0
 
 # Silence tightening (used by `plan-pauses`).
 # `noise` is the silencedetect threshold. "<n>LU" is relative to the file's
