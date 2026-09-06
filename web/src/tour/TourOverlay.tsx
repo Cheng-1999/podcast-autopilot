@@ -122,7 +122,12 @@ export const TourOverlay: React.FC = () => {
     if (!focusables || focusables.length === 0) return;
     const list = Array.from(focusables);
     const current = list.indexOf(document.activeElement as HTMLButtonElement);
-    const idx = current === -1 ? 0 : nextFocusIndex(current, list.length, e.shiftKey ? -1 : 1);
+    const idx =
+      current === -1
+        ? e.shiftKey
+          ? list.length - 1
+          : 0
+        : nextFocusIndex(current, list.length, e.shiftKey ? -1 : 1);
     e.preventDefault();
     list[idx]?.focus();
   };

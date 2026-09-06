@@ -379,6 +379,21 @@ describe("TourOverlay integration", () => {
     harness.unmount();
   });
 
+  it("Shift+Tab from the initially focused dialog wraps to the last button", () => {
+    const harness = mountTour(["status-bar", "episodes-list"]);
+    const dialog = harness.dialog();
+    expect(document.activeElement).toBe(dialog);
+
+    const buttons = harness.buttons();
+    act(() => {
+      dialog?.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true, cancelable: true })
+      );
+    });
+    expect(document.activeElement).toBe(buttons[buttons.length - 1]);
+    harness.unmount();
+  });
+
   it("replay from the global chrome (StatusBar) restarts a finished tour", () => {
     const harness = mountTourWithChrome();
     const clickNext = () => {
