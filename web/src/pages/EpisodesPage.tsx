@@ -243,7 +243,7 @@ export const EpisodesPage: React.FC = () => {
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {ep.parts?.length ?? 0}
+                      {formatCount(ep.parts?.length ?? 0, locale)}
                     </td>
 
                     {/* Status word colored semantically */}

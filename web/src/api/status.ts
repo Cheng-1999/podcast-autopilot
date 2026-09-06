@@ -7,6 +7,7 @@ export interface StatusDisplay {
 }
 
 import type { MessageKey } from "../i18n";
+import { formatDecimal } from "../lib/format";
 
 type Translate = (key: MessageKey, params?: Record<string, string | number>) => string;
 
@@ -62,7 +63,8 @@ const DEFAULT_STAGE_LABELS: Record<string, string> = {
 export function getStageDisplay(
   status: string | null | undefined,
   elapsed?: number | null,
-  translate?: Translate
+  translate?: Translate,
+  locale = "en"
 ): { label: string; color: SemanticColor } {
   const hasElapsed = elapsed !== undefined && elapsed !== null;
   const label = (key: MessageKey, fallback: string, params?: Record<string, string | number>) =>
@@ -74,7 +76,7 @@ export function getStageDisplay(
     case "ran":
       return {
         label: hasElapsed
-          ? label("stage.status.ran", `ran ${elapsed.toFixed(1)}s`, { elapsed: elapsed.toFixed(1) })
+          ? label("stage.status.ran", `ran ${formatDecimal(elapsed, locale, 1)}s`, { elapsed: formatDecimal(elapsed, locale, 1) })
           : label("stage.status.ranPlain", DEFAULT_STAGE_LABELS.ran),
         color: "green",
       };

@@ -16,7 +16,7 @@ import { Waveform } from "../components/Waveform";
 import { ItemList } from "../components/ItemList";
 import { TranscriptPane } from "../components/TranscriptPane";
 import { computeSecondsRemoved, computeEnabledFillerCount, computeSnippetRange } from "../lib/planMath";
-import { formatTimeTenths } from "../lib/format";
+import { formatTimeTenths, formatDecimal } from "../lib/format";
 import { registerNavigationGuard, confirmNavigation } from "../lib/navigationGuard";
 import { useLocale } from "../i18n";
 
@@ -46,7 +46,7 @@ function extractErrorsByItemId(errors: string[], knownIds: Set<string>): Map<str
 }
 
 export const ReviewPage: React.FC = () => {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const { id = "" } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -336,7 +336,7 @@ export const ReviewPage: React.FC = () => {
         }}
       >
         <div className="mono tabular-nums" style={{ color: "var(--text-primary)" }}>
-          {t("review.fillerSummary", { count: fillerCount, seconds: secondsRemoved.toFixed(1), duration: formatTimeTenths(duration) })}
+          {t("review.fillerSummary", { count: fillerCount, seconds: formatDecimal(secondsRemoved, locale, 1), duration: formatTimeTenths(duration, locale) })}
         </div>
         <div style={{ display: "flex", gap: "6px" }}>
           <button type="button" data-testid="save-plan-button" className="dense-btn" disabled={!dirty || saveState === "saving"} onClick={doSave}>

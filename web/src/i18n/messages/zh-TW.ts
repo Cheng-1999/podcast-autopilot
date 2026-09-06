@@ -40,6 +40,7 @@ const zhTW: Record<MessageKey, string> = {
   "status.ok": "正常",
   "status.err": "錯誤",
   "status.live": "即時 SSE",
+  "status.lan": "區網",
   "status.done": "已完成", "status.needsReview": "待審查", "status.running": "執行中", "status.neverRun": "未執行", "status.failed": "失敗", "status.invalid": "無效配置", "status.unknown": "未知",
   "new.heading": "新增集數",
   "new.navTag": "/ 新增集數",

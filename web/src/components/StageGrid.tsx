@@ -9,7 +9,7 @@ interface StageGridProps {
 }
 
 export const StageGrid: React.FC<StageGridProps> = ({ parts, stagesState }) => {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const prevStagesRef = useRef<Record<string, string>>({});
   const [flashingKeys, setFlashingKeys] = useState<Record<string, boolean>>({});
 
@@ -56,7 +56,7 @@ export const StageGrid: React.FC<StageGridProps> = ({ parts, stagesState }) => {
 
   const renderCell = (stageInfo?: StageInfo, cellKey?: string) => {
     const isFlashing = cellKey ? flashingKeys[cellKey] : false;
-    const display = getStageDisplay(stageInfo?.status, stageInfo?.elapsed, t);
+    const display = getStageDisplay(stageInfo?.status, stageInfo?.elapsed, t, locale);
 
     return (
       <td

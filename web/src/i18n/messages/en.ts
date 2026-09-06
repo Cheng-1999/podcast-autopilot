@@ -39,6 +39,7 @@ const en = {
   "status.ok": "ok",
   "status.err": "err",
   "status.live": "LIVE SSE",
+  "status.lan": "LAN",
   "status.done": "Completed",
   "status.needsReview": "Needs review",
   "status.running": "Running",

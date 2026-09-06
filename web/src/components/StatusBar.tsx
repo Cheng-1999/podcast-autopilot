@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import type { HealthResponse } from "../api/types";
 import { LanguageSelector } from "./LanguageSelector";
 import { useLocale } from "../i18n";
+import { formatDecimal } from "../lib/format";
 
 interface StatusBarProps {
   health?: HealthResponse | null;
@@ -15,7 +16,7 @@ interface StatusBarProps {
 }
 
 export const StatusBar: React.FC<StatusBarProps> = ({ health, activeJob }) => {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const [elapsed, setElapsed] = useState<number>(0);
 
   useEffect(() => {
@@ -151,14 +152,14 @@ export const StatusBar: React.FC<StatusBarProps> = ({ health, activeJob }) => {
         {/* Free disk */}
         {health?.free_disk_gb !== undefined && health.free_disk_gb !== null && (
           <div className="hide-on-tablet" style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-            <span className="mono">{health.free_disk_gb.toFixed(0)}G</span>
+            <span className="mono">{formatDecimal(health.free_disk_gb, locale, 0)}G</span>
           </div>
         )}
 
         {/* Host / LAN */}
         <div className="hide-on-mobile" style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
           <span className="mono" style={{ color: "var(--text-muted)" }}>
-            LAN:{host}
+            {t("status.lan")}:{host}
           </span>
         </div>
 
