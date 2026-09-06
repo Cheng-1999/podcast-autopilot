@@ -111,7 +111,7 @@ The guide covers the complete end-to-end podcast post-production workflow across
 | **3** | `episodes-new` | `episodes-new` | `/episodes` | **New Episode Action**: Primary button to open the episode registration wizard. |
 | **4** | `wizard-steps` | `wizard-steps` | `/episodes/new` | **Wizard Stages**: 3-step structured creation workflow covering metadata, audio tracks, and background music / assets. |
 | **5** | `wizard-upload` | `wizard-upload` | `/episodes/new` | **Audio Sources Intake**: Register existing audio files on local disk (zero-copy) or upload recordings through the browser. |
-| **6** | `run-controls` | `run-controls` | `/episodes/:id` | **Pipeline Execution Controls**: Select profile, choose Whisper transcription model (`small` or `medium`), specify stages to skip, and trigger pipeline execution. |
+| **6** | `run-controls` | `run-controls` | `/episodes/:id` | **Pipeline Execution Controls**: Select profile, choose Whisper transcription model (`small`, `medium`, or `large-v3`), specify stages to skip, and trigger pipeline execution. |
 | **7** | `stage-grid` | `stage-grid` | `/episodes/:id` | **Live Stage Progress Grid**: Real-time SSE visualization of all processing stages (`probe`, `clean`, `plan-pauses`, `transcribe`, `plan-fillers`, `audit`, `apply`, `assemble`) across each part. |
 | **8** | `log-panel` | `log-panel` | `/episodes/:id` | **Real-Time Log Tail**: Live console output streaming stdout/stderr from backend FFmpeg and Whisper subprocesses. |
 | **9** | `item-list` | `item-list` | `/episodes/:id/review` | **Edit Plan Items**: Table of pause tightening and filler word proposals with interactive toggle checkboxes, reason codes, and inline audit validation. |

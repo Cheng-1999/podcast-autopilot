@@ -26,6 +26,14 @@ from ..config import AppConfig
 TERMINAL_STATUSES = {"done", "failed", "cancelled"}
 
 
+class EpisodeDeletingError(RuntimeError):
+    """Raised when a job is submitted for an episode that is concurrently being deleted."""
+
+    def __init__(self, episode_id: str) -> None:
+        super().__init__(f"episode {episode_id!r} is being deleted")
+        self.episode_id = episode_id
+
+
 @dataclass
 class JobEvent:
     seq: int
@@ -163,6 +171,7 @@ class JobManager:
         self._jobs: dict[str, Job] = {}
         self._queue: "queue.Queue[str]" = queue.Queue()
         self._lock = threading.Lock()
+        self._deleting: set[str] = set()
         self._worker = threading.Thread(target=self._run_worker, name="dashboard-job-worker", daemon=True)
         self._worker.start()
 
@@ -184,6 +193,8 @@ class JobManager:
             profile_config_path=profile_config_path, model=model, out_dir=out_dir, skip=skip, force=force,
         )
         with self._lock:
+            if episode_id in self._deleting:
+                raise EpisodeDeletingError(episode_id)
             self._jobs[job_id] = job
         self._queue.put(job_id)
         return job
@@ -204,6 +215,8 @@ class JobManager:
             part_id=part_id, part_dir=part_dir, render=render, audio_path=audio_path,
         )
         with self._lock:
+            if episode_id in self._deleting:
+                raise EpisodeDeletingError(episode_id)
             self._jobs[job_id] = job
         self._queue.put(job_id)
         return job
@@ -219,6 +232,24 @@ class JobManager:
             if job.episode_id == episode_id and job.status in ("queued", "running"):
                 return job
         return None
+
+    def begin_delete(self, episode_id: str) -> bool:
+        """Atomically check for an active job and mark the episode as being
+        deleted, so a job submitted concurrently with a delete cannot race
+        it. Returns False (no state change) if a job is already active."""
+        with self._lock:
+            active = any(
+                job.episode_id == episode_id and job.status in ("queued", "running")
+                for job in self._jobs.values()
+            )
+            if active:
+                return False
+            self._deleting.add(episode_id)
+            return True
+
+    def end_delete(self, episode_id: str) -> None:
+        with self._lock:
+            self._deleting.discard(episode_id)
 
     def cancel(self, job_id: str) -> bool:
         job = self.get(job_id)

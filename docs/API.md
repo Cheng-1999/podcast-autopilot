@@ -62,7 +62,8 @@ Reports system dependencies, installed ffmpeg/ffprobe binaries, cached whisper m
   "ffmpeg_ok": true,
   "whisper_models": {
     "small": true,
-    "medium": true
+    "medium": true,
+    "large-v3": false
   },
   "free_disk_gb": 633.4
 }

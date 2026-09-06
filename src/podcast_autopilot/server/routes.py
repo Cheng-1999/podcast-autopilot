@@ -30,7 +30,7 @@ from .. import run as run_mod
 from ..config import DEFAULT_MODELS_DIR, FFmpegNotFoundError, load_config, resolve_ffmpeg_binaries
 from . import episodes as episodes_mod
 from . import media as media_mod
-from .jobs import Job, JobManager
+from .jobs import EpisodeDeletingError, Job, JobManager
 
 ALLOWED_UPLOAD_EXTENSIONS = {".wav", ".mp3", ".flac", ".m4a"}
 
@@ -303,38 +303,46 @@ def run_episode(episode_id: str, body: RunRequest, request: Request) -> dict:
     config = load_config(profile_config_path)
     model_size = body.model or config.whisper_model_size
 
-    job = job_manager.submit(
-        episode_id=episode_id,
-        episode_yaml=ref.path,
-        config=config,
-        profile=body.profile,
-        profile_config_path=profile_config_path,
-        model=model_size,
-        out_dir=project_root / "out",
-        skip=body.skip,
-        force=body.force,
-    )
+    try:
+        job = job_manager.submit(
+            episode_id=episode_id,
+            episode_yaml=ref.path,
+            config=config,
+            profile=body.profile,
+            profile_config_path=profile_config_path,
+            model=model_size,
+            out_dir=project_root / "out",
+            skip=body.skip,
+            force=body.force,
+        )
+    except EpisodeDeletingError:
+        raise HTTPException(409, "cannot start a job: episode is being deleted")
     return job.to_dict()
 
 
 @router.delete("/episodes/{episode_id}")
 def delete_episode(episode_id: str, request: Request) -> dict:
     """Remove an episode's manifest, generated output, and uploaded media."""
+    if not media_mod._is_safe_segment(episode_id):
+        raise HTTPException(400, f"invalid episode id: {episode_id!r}")
     project_root = _project_root(request)
     job_manager = _job_manager(request)
     ref = _ref_or_404(project_root, episode_id)
     if ref.example:
         raise HTTPException(400, "cannot delete a bundled example manifest")
-    if job_manager.active_job_for_episode(episode_id) is not None:
+    if not job_manager.begin_delete(episode_id):
         raise HTTPException(409, "cannot delete an episode while a job is running")
 
-    ref.path.unlink(missing_ok=True)
-    episode_root, _report_path, _parts_dir = episodes_mod.episode_paths(project_root, episode_id)
-    if episode_root.is_dir():
-        shutil.rmtree(episode_root)
-    media_dir = project_root / "media" / episode_id
-    if media_dir.is_dir():
-        shutil.rmtree(media_dir)
+    try:
+        ref.path.unlink(missing_ok=True)
+        episode_root, _report_path, _parts_dir = episodes_mod.episode_paths(project_root, episode_id)
+        if episode_root.is_dir():
+            shutil.rmtree(episode_root)
+        media_dir = project_root / "media" / episode_id
+        if media_dir.is_dir():
+            shutil.rmtree(media_dir)
+    finally:
+        job_manager.end_delete(episode_id)
     return {"ok": True}
 
 
@@ -567,15 +575,18 @@ def post_clips(episode_id: str, part_id: str, body: ClipsRequest, request: Reque
     audio_path = _part_wav_for_peaks(ref, part_dir, part_id)
 
     config = load_config(None)
-    job = job_manager.submit_clips(
-        episode_id=episode_id,
-        part_id=part_id,
-        part_dir=part_dir,
-        config=config,
-        out_dir=project_root / "out",
-        render=body.render,
-        audio_path=audio_path,
-    )
+    try:
+        job = job_manager.submit_clips(
+            episode_id=episode_id,
+            part_id=part_id,
+            part_dir=part_dir,
+            config=config,
+            out_dir=project_root / "out",
+            render=body.render,
+            audio_path=audio_path,
+        )
+    except EpisodeDeletingError:
+        raise HTTPException(409, "cannot start clip generation: episode is being deleted")
     return job.to_dict()
 
 

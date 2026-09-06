@@ -146,6 +146,65 @@ def test_delete_episode_rejects_while_job_running(client):
         _wait_for_job(c, job_id)
 
 
+def test_delete_episode_rejects_unsafe_id(client):
+    c, root = client
+    # a manifest file literally named "...yaml" glob-matches "*.yaml" with a
+    # Path.stem of "..", which -- without validation -- would resolve
+    # out/<id> and media/<id> to the project root and delete far outside the
+    # episode's own directory.
+    episodes_dir = root / "episodes"
+    episodes_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = episodes_dir / "...yaml"
+    manifest_path.write_text(
+        yaml.safe_dump({"title": "Traversal", "episode": 1, "parts": ["part1.wav"]}),
+        encoding="utf-8",
+    )
+    sentinel = root / "sentinel.txt"
+    sentinel.write_text("do not delete me", encoding="utf-8")
+
+    # percent-encoded so the test client's own URL normalization (which would
+    # otherwise collapse ".." into the parent path segment before the request
+    # is even sent) doesn't mask what the server receives: uvicorn decodes
+    # %2e%2e to a literal ".." path segment, exactly as a raw HTTP client can.
+    resp = c.delete("/api/episodes/%2e%2e")
+    assert resp.status_code == 400
+    assert manifest_path.exists()
+    assert sentinel.exists()
+
+
+def test_delete_episode_blocks_concurrent_job_submission(client):
+    c, root = client
+    from podcast_autopilot.server.jobs import EpisodeDeletingError
+
+    episodes_dir = root / "episodes"
+    episodes_dir.mkdir(parents=True, exist_ok=True)
+    (episodes_dir / "race-ep.yaml").write_text(
+        yaml.safe_dump({"title": "Race Ep", "episode": 1, "parts": ["../examples/part1.wav"]}),
+        encoding="utf-8",
+    )
+
+    app = c.app
+    job_manager = app.state.job_manager
+    assert job_manager.begin_delete("race-ep") is True
+    try:
+        with pytest.raises(EpisodeDeletingError):
+            job_manager.submit(
+                episode_id="race-ep",
+                episode_yaml=episodes_dir / "race-ep.yaml",
+                config=None,
+                profile="default",
+                profile_config_path=None,
+                model="small",
+                out_dir=root / "out",
+                skip=[],
+                force=True,
+            )
+        resp = c.post("/api/episodes/race-ep/run", json={"force": True})
+        assert resp.status_code == 409
+    finally:
+        job_manager.end_delete("race-ep")
+
+
 def test_run_job_completes_and_sse_covers_every_stage(client):
     c, _root = client
     resp = c.post("/api/episodes/episode.example/run", json={"force": True})
