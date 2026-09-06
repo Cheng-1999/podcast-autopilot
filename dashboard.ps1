@@ -18,6 +18,40 @@ Set-Location $RepoRoot
 # Developer Mode / admin on Windows and otherwise fail with WinError 1314).
 $env:HF_HUB_DISABLE_SYMLINKS = "1"
 
+function Test-PortFree {
+    param([int]$Port)
+    try {
+        $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Any, $Port)
+        $listener.Start()
+        $listener.Stop()
+        return $true
+    } catch {
+        return $false
+    }
+}
+
+if (-not (Test-PortFree -Port $Port)) {
+    # Port already bound. Most common cause: this dashboard is already running
+    # from an earlier launch (browser tab closed without hitting "Quit").
+    # Reuse it instead of failing with a raw socket-bind error after a slow
+    # rebuild, and only treat it as a real conflict if nothing answers there.
+    $existing = $null
+    try {
+        $existing = Invoke-RestMethod -Uri "http://localhost:$Port/api/health" -TimeoutSec 3 -ErrorAction Stop
+    } catch {
+        $existing = $null
+    }
+    if ($existing) {
+        Write-Host "A podcast-autopilot dashboard is already running on port $Port -- reusing it."
+        if (-not $NoBrowser) {
+            Start-Process "http://localhost:$Port"
+        }
+        exit 0
+    }
+    Write-Error "Port $Port is already in use by another process (not this dashboard). Close it, or run '.\dashboard.ps1 -Port <other>' to use a different port."
+    exit 1
+}
+
 $VenvDir = Join-Path $RepoRoot ".venv"
 $VenvPython = Join-Path $VenvDir "Scripts\python.exe"
 
