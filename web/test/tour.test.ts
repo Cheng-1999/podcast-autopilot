@@ -3,12 +3,14 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { act } from "react";
 import { MemoryRouter, useLocation } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { LocaleContext, getMessage, interpolate } from "../src/i18n";
 import type { MessageKey } from "../src/i18n/messages";
 import { TourProvider } from "../src/tour/context";
 import { TourOverlay } from "../src/tour/TourOverlay";
 import { StatusBar } from "../src/components/StatusBar";
+import { NewEpisodePage } from "../src/pages/NewEpisodePage";
 import { tourReducer, INITIAL_TOUR_STATE, nextFocusIndex, hasExceededAnchorAttempts, MAX_ANCHOR_ATTEMPTS } from "../src/tour/engine";
 import { extractEpisodeId, matchesRoute, resolveStepPath, getActiveSteps, isStepReachable } from "../src/tour/route";
 import { TOUR_STEPS, type TourStep } from "../src/tour/steps";
@@ -393,5 +395,72 @@ describe("TourOverlay integration", () => {
     expect(harness.dialog()).not.toBeNull();
     expect(harness.dialog()?.textContent).toContain("1 / 5");
     harness.unmount();
+  });
+
+  // Regression: the "wizard-upload" step targets NewEpisodePage's step 2,
+  // but the page only renders that section when its own local `step` state
+  // is 2. The synthetic-anchor harnesses above can't catch this because they
+  // fake the anchor directly instead of rendering the real page -- this test
+  // mounts NewEpisodePage itself so the tour has to actually reach the anchor.
+  it("reaching the wizard-upload step lands on NewEpisodePage's upload section", () => {
+    vi.useFakeTimers();
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = ReactDOM.createRoot(container);
+    const localeValue = { locale: "en" as const, setLocale: () => {}, t };
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    act(() => {
+      root.render(
+        React.createElement(
+          MemoryRouter,
+          { initialEntries: ["/episodes/new"] },
+          React.createElement(
+            QueryClientProvider,
+            { client: queryClient },
+            React.createElement(
+              LocaleContext.Provider,
+              { value: localeValue },
+              React.createElement(
+                TourProvider,
+                null,
+                React.createElement(
+                  React.Fragment,
+                  null,
+                  React.createElement(NewEpisodePage),
+                  React.createElement(TourOverlay)
+                )
+              )
+            )
+          )
+        )
+      );
+    });
+
+    const dialog = () => container.querySelector('[role="dialog"]');
+    const clickNext = () => {
+      const next = Array.from(container.querySelectorAll("button")).find(
+        (b) => b.textContent === t("tour.next") || b.textContent === t("tour.finish")
+      );
+      act(() => next?.click());
+    };
+
+    // status-bar/episodes-list/episodes-new have no anchor in this harness
+    // (only NewEpisodePage is mounted) and each gets skipped by the polling
+    // fallback in turn -- three separate skip cycles (each needs its own
+    // act() flush for the route-change effect to land) to reach wizard-steps,
+    // the first step whose anchor actually exists.
+    for (let i = 0; i < 3; i++) {
+      act(() => {
+        vi.advanceTimersByTime((MAX_ANCHOR_ATTEMPTS + 2) * 80);
+      });
+    }
+    expect(dialog()?.textContent).toContain(t("tour.step.wizardSteps.title"));
+
+    clickNext();
+    expect(dialog()?.textContent).toContain(t("tour.step.wizardUpload.title"));
+    expect(container.querySelector('[data-tour="wizard-upload"]')).not.toBeNull();
+
+    act(() => root.unmount());
   });
 });

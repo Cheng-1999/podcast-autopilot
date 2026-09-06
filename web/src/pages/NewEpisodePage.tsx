@@ -6,6 +6,7 @@ import { reorder, validateChapters } from "../api/validation";
 import type { EpisodeCreateBody, UploadResponse } from "../api/types";
 import { useLocale } from "../i18n";
 import { formatCount, formatMinutesSeconds } from "../lib/format";
+import { useTourOptional } from "../tour/context";
 
 type Part = UploadResponse & { name: string; progress: number; path: string };
 type Chapter = { start: string; title: string };
@@ -24,6 +25,11 @@ export const NewEpisodePage: React.FC = () => {
   const { data: episodes } = useQuery({ queryKey: ["episodes"], queryFn: fetchEpisodes });
   const latest = useMemo(() => [...(episodes || [])].sort((a, b) => (b.last_run_time || 0) - (a.last_run_time || 0))[0], [episodes]);
   const [step, setStep] = useState(1);
+  const tour = useTourOptional();
+  const tourAnchor = tour?.isActive ? tour.step?.anchor : null;
+  React.useEffect(() => {
+    if (tourAnchor === "wizard-upload") setStep(2);
+  }, [tourAnchor]);
   const [title, setTitle] = useState(""); const [episode, setEpisode] = useState(1);
   const [tags, setTags] = useState<Record<string, string>>(() => ({ ...emptyTags }));
   const [parts, setParts] = useState<Part[]>([]); const [localPath, setLocalPath] = useState("");
