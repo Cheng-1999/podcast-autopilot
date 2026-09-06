@@ -39,6 +39,7 @@ export const LogPanel: React.FC<LogPanelProps> = ({
 
   return (
     <div
+      data-tour="log-panel"
       style={{
         border: "var(--border-subtle)",
         borderRadius: "var(--radius-max)",

@@ -23,6 +23,23 @@ const zhCN: Record<MessageKey, string> = {
   "episodes.loadError": "无法加载剧集：{{message}}", "status.ffmpeg": "ffmpeg {{state}}", "status.models": "模型 {{count}}/2", "new.pathPlaceholder": "粘贴本机绝对路径，例如 C:\\audio\\part-01.wav",
   "status.done": "已完成", "status.needsReview": "待审核", "status.running": "运行中", "status.neverRun": "未运行", "status.failed": "失败", "status.invalid": "配置无效", "status.unknown": "未知",
   "new.step": "步骤", "new.title": "标题 TITLE", "new.episode": "集数 EPISODE", "new.artist": "艺术家 ARTIST", "new.album": "专辑 ALBUM", "new.year": "年份 YEAR", "new.comment": "备注 COMMENT", "new.partsHeading": "段落音频", "new.assetsHeading": "配乐与章节", "new.totalDuration": "总时长 {{duration}}", "new.chapterHeading": "章节 CHAPTERS", "new.chapterTime": "mm:ss", "new.gain": "GAIN dB", "new.threshold": "THRESHOLD", "new.ratio": "RATIO", "new.attack": "ATTACK ms", "new.release": "RELEASE ms", "new.validationRequired": "请输入标题并至少添加一个段落音频文件", "new.chapterTimeError": "章节时间格式错误：{{time}}", "new.chapterExceedsDuration": "章节「{{title}}」超过音频总时长",
+  "tour.next": "下一步", "tour.back": "上一步", "tour.skip": "跳过导览", "tour.finish": "完成", "tour.replay": "重播导览", "tour.progress": "{{current}} / {{total}}",
+  "tour.step.statusBar.title": "状态栏", "tour.step.statusBar.body": "系统健康状态、当前任务与语言设置都在这里，随时可以回来查看。",
+  "tour.step.episodesList.title": "你的剧集", "tour.step.episodesList.body": "所有已创建的剧集都会列在这里，包含状态与上次运行时间。",
+  "tour.step.episodesNew.title": "创建新剧集", "tour.step.episodesNew.body": "点这里打开向导，用音频文件创建新剧集。",
+  "tour.step.wizardSteps.title": "向导步骤", "tour.step.wizardSteps.body": "在基本信息、段落音频、配乐与章节之间切换，逐步填写剧集信息。",
+  "tour.step.wizardUpload.title": "上传段落音频", "tour.step.wizardUpload.body": "拖放音频文件，或注册本机路径，添加组成本集的段落。",
+  "tour.step.runControls.title": "运行控制", "tour.step.runControls.body": "选择配置文件与模型后运行流程，强制重跑与跳过阶段也在这里设置。",
+  "tour.step.stageGrid.title": "阶段网格", "tour.step.stageGrid.body": "任务运行时，实时查看每个段落各阶段的进度。",
+  "tour.step.logPanel.title": "实时日志", "tour.step.logPanel.body": "展开此面板可跟踪流程的实时日志输出。",
+  "tour.step.itemList.title": "编辑项目", "tour.step.itemList.body": "在这里查看每个剪除、赘字与片段候选，保存前可单独开关。",
+  "tour.step.waveform.title": "波形", "tour.step.waveform.body": "滚动可缩放，拖动可平移，双击区域可选中对应项目。",
+  "tour.step.reviewReapply.title": "保存并重新应用", "tour.step.reviewReapply.body": "保存编辑内容，并从审核阶段起重新运行流程。",
+  "tour.step.clipsGenerate.title": "生成片段候选", "tour.step.clipsGenerate.body": "生成候选片段，或直接生成并渲染成文件。",
+  "tour.step.clipsPlay.title": "试听片段", "tour.step.clipsPlay.body": "在决定是否渲染前，直接在这里试听任一候选片段。",
+  "tour.step.clipsDownload.title": "下载片段", "tour.step.clipsDownload.body": "渲染完成后，可在各行下载该片段的 MP3 与字幕文件。",
+  "tour.step.deliverablesDownload.title": "下载完成的剧集", "tour.step.deliverablesDownload.body": "流程产出后，在这里获取最终混音完成的 MP3。",
+  "tour.step.deliverablesReport.title": "运行报告", "tour.step.deliverablesReport.body": "打开 RUN_REPORT.md 查看本次处理的完整明细。",
 };
 
 export default zhCN;

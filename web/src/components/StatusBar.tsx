@@ -4,6 +4,7 @@ import type { HealthResponse } from "../api/types";
 import { LanguageSelector } from "./LanguageSelector";
 import { useLocale } from "../i18n";
 import { formatDecimal } from "../lib/format";
+import { useTourOptional } from "../tour/context";
 
 interface StatusBarProps {
   health?: HealthResponse | null;
@@ -17,6 +18,7 @@ interface StatusBarProps {
 
 export const StatusBar: React.FC<StatusBarProps> = ({ health, activeJob }) => {
   const { t, locale } = useLocale();
+  const tour = useTourOptional();
   const [elapsed, setElapsed] = useState<number>(0);
 
   useEffect(() => {
@@ -42,6 +44,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({ health, activeJob }) => {
 
   return (
     <header
+      data-tour="status-bar"
       style={{
         height: "var(--status-bar-height)",
         backgroundColor: "var(--surface-panel)",
@@ -164,6 +167,18 @@ export const StatusBar: React.FC<StatusBarProps> = ({ health, activeJob }) => {
         </div>
 
         <LanguageSelector />
+
+        {tour && (
+          <button
+            type="button"
+            className="dense-btn"
+            onClick={() => tour.replay()}
+            aria-label={t("tour.replay")}
+            title={t("tour.replay")}
+          >
+            ?
+          </button>
+        )}
       </div>
     </header>
   );

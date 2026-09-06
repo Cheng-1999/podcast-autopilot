@@ -98,6 +98,7 @@ export const StageGrid: React.FC<StageGridProps> = ({ parts, stagesState }) => {
 
   return (
     <div
+      data-tour="stage-grid"
       style={{
         border: "var(--border-subtle)",
         borderRadius: "var(--radius-max)",

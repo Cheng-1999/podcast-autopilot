@@ -30,6 +30,7 @@ export const ItemList: React.FC<ItemListProps> = ({
 
   return (
     <div
+      data-tour="item-list"
       style={{
         border: "var(--border-subtle)",
         borderRadius: "var(--radius-max)",

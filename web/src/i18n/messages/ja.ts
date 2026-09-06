@@ -14,6 +14,23 @@ const ja: Record<MessageKey, string> = {
   "episodes.loadError": "エピソードを読み込めません：{{message}}", "status.ffmpeg": "ffmpeg {{state}}", "status.models": "モデル {{count}}/2", "new.pathPlaceholder": "ローカルの絶対パス（例：C:\\audio\\part-01.wav）",
   "status.done": "完了", "status.needsReview": "要確認", "status.running": "実行中", "status.neverRun": "未実行", "status.failed": "失敗", "status.invalid": "無効な設定", "status.unknown": "不明",
   "new.step": "STEP", "new.title": "タイトル TITLE", "new.episode": "エピソード EPISODE", "new.artist": "アーティスト ARTIST", "new.album": "アルバム ALBUM", "new.year": "年 YEAR", "new.comment": "コメント COMMENT", "new.partsHeading": "パート音声", "new.assetsHeading": "音楽とチャプター", "new.totalDuration": "合計 {{duration}}", "new.chapterHeading": "チャプター CHAPTERS", "new.chapterTime": "mm:ss", "new.gain": "GAIN dB", "new.threshold": "THRESHOLD", "new.ratio": "RATIO", "new.attack": "ATTACK ms", "new.release": "RELEASE ms", "new.validationRequired": "タイトルを入力し、パート音声を1つ以上追加してください", "new.chapterTimeError": "チャプター時間の形式が不正です：{{time}}", "new.chapterExceedsDuration": "チャプター「{{title}}」が音声の総時間を超えています",
+  "tour.next": "次へ", "tour.back": "戻る", "tour.skip": "ツアーをスキップ", "tour.finish": "完了", "tour.replay": "ツアーを再生", "tour.progress": "{{current}} / {{total}}",
+  "tour.step.statusBar.title": "ステータスバー", "tour.step.statusBar.body": "システムの状態、実行中のジョブ、言語設定はここにあります。いつでも確認できます。",
+  "tour.step.episodesList.title": "エピソード一覧", "tour.step.episodesList.body": "作成したすべてのエピソードが、状態と最終実行時刻とともに表示されます。",
+  "tour.step.episodesNew.title": "新しいエピソードを作成", "tour.step.episodesNew.body": "ここをクリックしてウィザードを開き、音声ファイルから新しいエピソードを作成します。",
+  "tour.step.wizardSteps.title": "ウィザードの手順", "tour.step.wizardSteps.body": "基本情報、パート音声、音楽とチャプターの間を移動しながらエピソード情報を入力します。",
+  "tour.step.wizardUpload.title": "パート音声をアップロード", "tour.step.wizardUpload.body": "音声ファイルをドロップするか、ローカルパスを登録して、エピソードを構成するパートを追加します。",
+  "tour.step.runControls.title": "実行コントロール", "tour.step.runControls.body": "プロファイルとモデルを選んでパイプラインを実行します。強制再実行やステージのスキップもここで設定します。",
+  "tour.step.stageGrid.title": "ステージグリッド", "tour.step.stageGrid.body": "ジョブ実行中、各パートのすべての処理ステージをリアルタイムで確認できます。",
+  "tour.step.logPanel.title": "ライブログ", "tour.step.logPanel.body": "このパネルを展開すると、パイプラインのライブログ出力を追跡できます。",
+  "tour.step.itemList.title": "項目を編集", "tour.step.itemList.body": "すべてのカット、フィラー、クリップ候補をここで確認し、保存前に個別に切り替えられます。",
+  "tour.step.waveform.title": "波形", "tour.step.waveform.body": "スクロールでズーム、ドラッグでパン、区間をダブルクリックすると対応する項目を選択します。",
+  "tour.step.reviewReapply.title": "保存して再適用", "tour.step.reviewReapply.body": "編集内容を保存し、確認ステージ以降のパイプラインを再実行します。",
+  "tour.step.clipsGenerate.title": "クリップ候補を生成", "tour.step.clipsGenerate.body": "候補を生成するか、生成してそのままファイルにレンダリングします。",
+  "tour.step.clipsPlay.title": "クリップを試聴", "tour.step.clipsPlay.body": "レンダリングする前に、ここで候補クリップを直接試聴できます。",
+  "tour.step.clipsDownload.title": "クリップをダウンロード", "tour.step.clipsDownload.body": "レンダリング後、各行からクリップのMP3と字幕ファイルをダウンロードできます。",
+  "tour.step.deliverablesDownload.title": "完成したエピソードをダウンロード", "tour.step.deliverablesDownload.body": "パイプラインが生成した最終ミックス済みMP3をここで取得します。",
+  "tour.step.deliverablesReport.title": "実行レポート", "tour.step.deliverablesReport.body": "RUN_REPORT.mdを開いて、処理内容の詳細を確認します。",
 };
 
 export default ja;

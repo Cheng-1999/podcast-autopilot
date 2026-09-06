@@ -15,6 +15,23 @@ const ko: Record<MessageKey, string> = {
   "status.done": "완료", "status.needsReview": "검토 필요", "status.running": "실행 중", "status.neverRun": "실행 안 함", "status.failed": "실패", "status.invalid": "잘못된 구성", "status.unknown": "알 수 없음",
   "new.step": "STEP", "new.title": "제목 TITLE", "new.episode": "에피소드 EPISODE", "new.artist": "아티스트 ARTIST", "new.album": "앨범 ALBUM", "new.year": "연도 YEAR", "new.comment": "메모 COMMENT", "new.partsHeading": "파트 오디오", "new.assetsHeading": "음악 및 챕터", "new.totalDuration": "총 길이 {{duration}}", "new.chapterHeading": "챕터 CHAPTERS", "new.chapterTime": "mm:ss", "new.gain": "GAIN dB", "new.threshold": "THRESHOLD", "new.ratio": "RATIO", "new.attack": "ATTACK ms", "new.release": "RELEASE ms", "new.validationRequired": "제목을 입력하고 파트 오디오를 하나 이상 추가하세요", "new.chapterTimeError": "챕터 시간 형식이 잘못되었습니다: {{time}}", "new.chapterExceedsDuration": "챕터 「{{title}}」가 전체 오디오 길이를 초과합니다",
   "deliverables.truePeak": "트루 피크: {{value}}",
+  "tour.next": "다음", "tour.back": "이전", "tour.skip": "투어 건너뛰기", "tour.finish": "완료", "tour.replay": "투어 다시 보기", "tour.progress": "{{current}} / {{total}}",
+  "tour.step.statusBar.title": "상태 표시줄", "tour.step.statusBar.body": "시스템 상태, 실행 중인 작업, 언어 설정을 여기서 확인할 수 있습니다.",
+  "tour.step.episodesList.title": "에피소드 목록", "tour.step.episodesList.body": "생성한 모든 에피소드가 상태와 최근 실행 시간과 함께 표시됩니다.",
+  "tour.step.episodesNew.title": "새 에피소드 만들기", "tour.step.episodesNew.body": "여기를 클릭하면 마법사를 열고 오디오 파일로 새 에피소드를 만들 수 있습니다.",
+  "tour.step.wizardSteps.title": "마법사 단계", "tour.step.wizardSteps.body": "기본 정보, 파트 오디오, 음악 및 챕터 사이를 이동하며 에피소드 정보를 입력합니다.",
+  "tour.step.wizardUpload.title": "파트 오디오 업로드", "tour.step.wizardUpload.body": "오디오 파일을 끌어다 놓거나 로컬 경로를 등록해 에피소드를 구성하는 파트를 추가합니다.",
+  "tour.step.runControls.title": "실행 제어", "tour.step.runControls.body": "프로필과 모델을 선택한 뒤 파이프라인을 실행합니다. 강제 재실행과 단계 건너뛰기도 여기서 설정합니다.",
+  "tour.step.stageGrid.title": "단계 그리드", "tour.step.stageGrid.body": "작업이 실행되는 동안 각 파트의 모든 처리 단계를 실시간으로 확인합니다.",
+  "tour.step.logPanel.title": "실시간 로그", "tour.step.logPanel.body": "이 패널을 펼치면 파이프라인의 실시간 로그 출력을 확인할 수 있습니다.",
+  "tour.step.itemList.title": "항목 편집", "tour.step.itemList.body": "모든 컷, 불필요 발화, 클립 후보를 여기서 검토하고 저장 전에 개별적으로 켜고 끌 수 있습니다.",
+  "tour.step.waveform.title": "파형", "tour.step.waveform.body": "스크롤로 확대하고 드래그로 이동하며, 구간을 더블클릭하면 해당 항목이 선택됩니다.",
+  "tour.step.reviewReapply.title": "저장하고 다시 적용", "tour.step.reviewReapply.body": "편집 내용을 저장하고 검토 단계부터 파이프라인을 다시 실행합니다.",
+  "tour.step.clipsGenerate.title": "클립 후보 생성", "tour.step.clipsGenerate.body": "후보를 생성하거나, 생성과 동시에 파일로 렌더링합니다.",
+  "tour.step.clipsPlay.title": "클립 미리 듣기", "tour.step.clipsPlay.body": "렌더링 여부를 결정하기 전에 여기서 후보 클립을 바로 재생해 볼 수 있습니다.",
+  "tour.step.clipsDownload.title": "클립 다운로드", "tour.step.clipsDownload.body": "렌더링이 끝나면 각 행에서 클립의 MP3와 자막 파일을 다운로드할 수 있습니다.",
+  "tour.step.deliverablesDownload.title": "완성된 에피소드 다운로드", "tour.step.deliverablesDownload.body": "파이프라인이 만든 최종 믹스 MP3를 여기서 받을 수 있습니다.",
+  "tour.step.deliverablesReport.title": "실행 보고서", "tour.step.deliverablesReport.body": "RUN_REPORT.md를 열어 이번 처리의 전체 내역을 확인합니다.",
 };
 
 export default ko;

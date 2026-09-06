@@ -10,6 +10,7 @@ import { ClipsPage } from "./pages/ClipsPage";
 import { ReviewPage } from "./pages/ReviewPage";
 import { DeliverablesPage } from "./pages/DeliverablesPage";
 import { confirmNavigation } from "./lib/navigationGuard";
+import { TourOverlay } from "./tour/TourOverlay";
 import type { EpisodeSummary } from "./api/types";
 
 export const App: React.FC = () => {
@@ -104,6 +105,8 @@ export const App: React.FC = () => {
           <Route path="*" element={<Navigate to="/episodes" replace />} />
         </Routes>
       </main>
+
+      <TourOverlay />
     </div>
   );
 };

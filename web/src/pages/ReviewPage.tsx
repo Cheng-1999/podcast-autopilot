@@ -342,7 +342,7 @@ export const ReviewPage: React.FC = () => {
           <button type="button" data-testid="save-plan-button" className="dense-btn" disabled={!dirty || saveState === "saving"} onClick={doSave}>
             {t("common.save")} <span className="kbd-hint">s</span>
           </button>
-          <button type="button" className="dense-btn primary" disabled={saveState === "saving"} onClick={doReapply}>
+          <button type="button" data-tour="review-reapply" className="dense-btn primary" disabled={saveState === "saving"} onClick={doReapply}>
             {t("review.saveApply")} <span className="kbd-hint">a</span>
           </button>
           {saveState === "saved" && <span style={{ color: "var(--semantic-green)", alignSelf: "center" }}>{t("common.saved")}</span>}
@@ -352,6 +352,7 @@ export const ReviewPage: React.FC = () => {
       <audio ref={audioRef} src={audioSrc} onTimeUpdate={handleTimeUpdate} style={{ display: "none" }} />
 
       <div
+        data-tour="waveform"
         style={{
           border: "var(--border-subtle)",
           borderRadius: "var(--radius-max)",

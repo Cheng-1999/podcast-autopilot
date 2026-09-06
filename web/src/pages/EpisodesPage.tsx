@@ -56,7 +56,7 @@ export const EpisodesPage: React.FC = () => {
         </div>
 
         <div>
-          <Link to="/episodes/new" className="dense-btn">
+          <Link to="/episodes/new" className="dense-btn" data-tour="episodes-new">
             <span>{t("episodes.new")}</span>
           </Link>
         </div>
@@ -95,6 +95,7 @@ export const EpisodesPage: React.FC = () => {
       {/* Empty State */}
       {!isLoading && !error && episodes && episodes.length === 0 && (
         <div
+          data-tour="episodes-list"
           style={{
             padding: "32px 16px",
             textAlign: "center",
@@ -116,6 +117,7 @@ export const EpisodesPage: React.FC = () => {
       {/* Episodes Table */}
       {!isLoading && !error && episodes && episodes.length > 0 && (
         <div
+          data-tour="episodes-list"
           style={{
             border: "var(--border-subtle)",
             borderRadius: "var(--radius-max)",

@@ -103,7 +103,7 @@ export const DeliverablesPage: React.FC = () => {
             <span className="mono tabular-nums">{t("deliverables.duration", { duration: duration !== null ? formatTimeTenths(duration, locale) : "-" })}</span>
             <span className="mono tabular-nums">LUFS: {lufs !== null ? formatDecimal(lufs, locale, 2) : "-"}</span>
             <span className="mono tabular-nums">{t("deliverables.truePeak", { value: truePeak !== null ? `${formatDecimal(truePeak, locale, 2)} dBTP` : "-" })}</span>
-            <a href={deliverables.final_mp3} download className="dense-btn">
+            <a href={deliverables.final_mp3} download className="dense-btn" data-tour="deliverables-download">
               {t("deliverables.downloadMp3")}
             </a>
           </div>
@@ -179,7 +179,13 @@ export const DeliverablesPage: React.FC = () => {
       )}
 
       <div style={{ display: "flex", justifyContent: "flex-end" }}>
-        <a href={`/api/episodes/${encodeURIComponent(id)}/report`} target="_blank" rel="noreferrer" className="dense-btn">
+        <a
+          href={`/api/episodes/${encodeURIComponent(id)}/report`}
+          target="_blank"
+          rel="noreferrer"
+          className="dense-btn"
+          data-tour="deliverables-report"
+        >
           {t("deliverables.openReport")}
         </a>
       </div>

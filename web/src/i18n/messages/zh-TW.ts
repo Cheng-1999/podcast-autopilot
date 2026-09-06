@@ -157,6 +157,23 @@ const zhTW: Record<MessageKey, string> = {
   "deliverables.start": "開始",
   "deliverables.title": "標題",
   "deliverables.downloadWav": "下載 WAV",
+  "tour.next": "下一步", "tour.back": "上一步", "tour.skip": "跳過導覽", "tour.finish": "完成", "tour.replay": "重播導覽", "tour.progress": "{{current}} / {{total}}",
+  "tour.step.statusBar.title": "狀態列", "tour.step.statusBar.body": "系統健康狀態、目前工作與語言設定都在這裡，隨時可以回來查看。",
+  "tour.step.episodesList.title": "你的集數", "tour.step.episodesList.body": "所有已建立的集數都會列在這裡，包含狀態與上次執行時間。",
+  "tour.step.episodesNew.title": "建立新集數", "tour.step.episodesNew.body": "點這裡開啟精靈，用音訊檔案建立新集數。",
+  "tour.step.wizardSteps.title": "精靈步驟", "tour.step.wizardSteps.body": "在基本資訊、段落音訊、音樂與章節之間切換，逐步填寫集數資料。",
+  "tour.step.wizardUpload.title": "上傳段落音訊", "tour.step.wizardUpload.body": "拖放音訊檔案，或註冊本機路徑，加入組成這一集的段落。",
+  "tour.step.runControls.title": "執行控制", "tour.step.runControls.body": "選擇設定檔與模型後執行流程，強制重跑與跳過階段也在這裡設定。",
+  "tour.step.stageGrid.title": "階段網格", "tour.step.stageGrid.body": "工作執行時，即時查看每個段落各階段的進度。",
+  "tour.step.logPanel.title": "即時日誌", "tour.step.logPanel.body": "展開此面板可追蹤流程的即時日誌輸出。",
+  "tour.step.itemList.title": "編輯項目", "tour.step.itemList.body": "在這裡檢視每個剪除、贅字與片段候選，儲存前可個別開關。",
+  "tour.step.waveform.title": "波形", "tour.step.waveform.body": "滾動可縮放，拖曳可平移，雙擊區塊可選取對應項目。",
+  "tour.step.reviewReapply.title": "儲存並重新套用", "tour.step.reviewReapply.body": "儲存編輯內容，並從審核階段起重新執行流程。",
+  "tour.step.clipsGenerate.title": "產生片段候選", "tour.step.clipsGenerate.body": "產生候選片段，或直接產生並渲染成檔案。",
+  "tour.step.clipsPlay.title": "試聽片段", "tour.step.clipsPlay.body": "在決定是否渲染前，直接在這裡試聽任一候選片段。",
+  "tour.step.clipsDownload.title": "下載片段", "tour.step.clipsDownload.body": "渲染完成後，可在各列下載該片段的 MP3 與字幕檔。",
+  "tour.step.deliverablesDownload.title": "下載完成的集數", "tour.step.deliverablesDownload.body": "流程產出後，在這裡取得最終混音完成的 MP3。",
+  "tour.step.deliverablesReport.title": "執行報告", "tour.step.deliverablesReport.body": "開啟 RUN_REPORT.md 查看本次處理的完整明細。",
 };
 
 export default zhTW;

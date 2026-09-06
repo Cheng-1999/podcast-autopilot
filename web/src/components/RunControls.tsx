@@ -36,6 +36,7 @@ export const RunControls: React.FC<RunControlsProps> = ({
 
   return (
     <div
+      data-tour="run-controls"
       style={{
         display: "flex",
         flexWrap: "wrap",
