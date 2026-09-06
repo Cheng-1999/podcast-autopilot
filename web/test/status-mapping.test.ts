@@ -81,4 +81,14 @@ describe("getStageDisplay", () => {
     expect(res.label).toBe("failed");
     expect(res.color).toBe("red");
   });
+
+  it("uses the translate function when provided, instead of the English fallback", () => {
+    const translate = (key: string, params?: Record<string, string | number>) =>
+      params ? `[${key}:${JSON.stringify(params)}]` : `[${key}]`;
+    expect(getStageDisplay("running", undefined, translate).label).toBe("[stage.status.running]");
+    expect(getStageDisplay("cached", undefined, translate).label).toBe("[stage.status.cached]");
+    expect(getStageDisplay("ran", 2.345, translate).label).toBe(
+      '[stage.status.ran:{"elapsed":"2.3"}]'
+    );
+  });
 });

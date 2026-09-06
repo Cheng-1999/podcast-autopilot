@@ -8,7 +8,7 @@ export interface StatusDisplay {
 
 import type { MessageKey } from "../i18n";
 
-type Translate = (key: MessageKey) => string;
+type Translate = (key: MessageKey, params?: Record<string, string | number>) => string;
 
 const STATUS_KEYS: Record<string, MessageKey> = {
   done: "status.done",
@@ -50,26 +50,42 @@ export function getStatusDisplay(status: string | null | undefined, translate?: 
   }
 }
 
+const DEFAULT_STAGE_LABELS: Record<string, string> = {
+  running: "running...",
+  ran: "ran",
+  cached: "cached",
+  skipped: "skipped",
+  failed: "failed",
+  cancelled: "cancelled",
+};
+
 export function getStageDisplay(
   status: string | null | undefined,
-  elapsed?: number | null
+  elapsed?: number | null,
+  translate?: Translate
 ): { label: string; color: SemanticColor } {
+  const hasElapsed = elapsed !== undefined && elapsed !== null;
+  const label = (key: MessageKey, fallback: string, params?: Record<string, string | number>) =>
+    translate ? translate(key, params) : fallback;
+
   switch (status) {
     case "running":
-      return { label: "running...", color: "blue" };
+      return { label: label("stage.status.running", DEFAULT_STAGE_LABELS.running), color: "blue" };
     case "ran":
       return {
-        label: elapsed !== undefined && elapsed !== null ? `ran ${elapsed.toFixed(1)}s` : "ran",
+        label: hasElapsed
+          ? label("stage.status.ran", `ran ${elapsed.toFixed(1)}s`, { elapsed: elapsed.toFixed(1) })
+          : label("stage.status.ranPlain", DEFAULT_STAGE_LABELS.ran),
         color: "green",
       };
     case "cached":
-      return { label: "cached", color: "green" };
+      return { label: label("stage.status.cached", DEFAULT_STAGE_LABELS.cached), color: "green" };
     case "skipped":
-      return { label: "skipped", color: "muted" };
+      return { label: label("stage.status.skipped", DEFAULT_STAGE_LABELS.skipped), color: "muted" };
     case "failed":
-      return { label: "failed", color: "red" };
+      return { label: label("stage.status.failed", DEFAULT_STAGE_LABELS.failed), color: "red" };
     case "cancelled":
-      return { label: "cancelled", color: "amber" };
+      return { label: label("stage.status.cancelled", DEFAULT_STAGE_LABELS.cancelled), color: "amber" };
     case "pending":
     default:
       return { label: "-", color: "muted" };

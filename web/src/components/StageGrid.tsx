@@ -56,7 +56,7 @@ export const StageGrid: React.FC<StageGridProps> = ({ parts, stagesState }) => {
 
   const renderCell = (stageInfo?: StageInfo, cellKey?: string) => {
     const isFlashing = cellKey ? flashingKeys[cellKey] : false;
-    const display = getStageDisplay(stageInfo?.status, stageInfo?.elapsed);
+    const display = getStageDisplay(stageInfo?.status, stageInfo?.elapsed, t);
 
     return (
       <td
