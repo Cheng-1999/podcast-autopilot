@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { parseTimestamp, reorder, validateChapters } from "../src/api/validation";
 describe("chapter validation", () => {
-  it("rejects a start past total duration", () => expect(validateChapters([{ start: "01:01", title: "Late" }], 60)).toContain("超過"));
+  it("rejects a start past total duration", () => expect(validateChapters([{ start: "01:01", title: "Late" }], 60)).toEqual({ key: "new.chapterExceedsDuration", params: { title: "Late" } }));
+  it("rejects an unparseable time", () => expect(validateChapters([{ start: "bad", title: "" }], 60)).toEqual({ key: "new.chapterTimeError", params: { time: "bad" } }));
   it("accepts hh:mm:ss", () => { expect(parseTimestamp("01:02:03")).toBe(3723); expect(validateChapters([{ start: "01:02:03", title: "Main" }], 4000)).toBeNull(); });
 });
 describe("part ordering", () => {

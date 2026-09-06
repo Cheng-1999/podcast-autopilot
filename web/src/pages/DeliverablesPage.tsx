@@ -102,7 +102,7 @@ export const DeliverablesPage: React.FC = () => {
           <div style={{ display: "flex", gap: "16px", fontSize: "var(--font-size-sm)", flexWrap: "wrap" }}>
             <span className="mono tabular-nums">{t("deliverables.duration", { duration: duration !== null ? formatTimeTenths(duration, locale) : "-" })}</span>
             <span className="mono tabular-nums">LUFS: {lufs !== null ? formatDecimal(lufs, locale, 2) : "-"}</span>
-            <span className="mono tabular-nums">True Peak: {truePeak !== null ? `${formatDecimal(truePeak, locale, 2)} dBTP` : "-"}</span>
+            <span className="mono tabular-nums">{t("deliverables.truePeak", { value: truePeak !== null ? `${formatDecimal(truePeak, locale, 2)} dBTP` : "-" })}</span>
             <a href={deliverables.final_mp3} download className="dense-btn">
               {t("deliverables.downloadMp3")}
             </a>

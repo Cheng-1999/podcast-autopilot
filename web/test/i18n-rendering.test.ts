@@ -14,6 +14,7 @@ import { TranscriptPane } from "../src/components/TranscriptPane";
 import { LogPanel } from "../src/components/LogPanel";
 import { StatusBar } from "../src/components/StatusBar";
 import { EpisodesPage } from "../src/pages/EpisodesPage";
+import { NewEpisodePage } from "../src/pages/NewEpisodePage";
 import type { EpisodeSummary } from "../src/api/types";
 
 // Strings that a prior review round found hard-coded in JSX outside of any
@@ -204,6 +205,37 @@ describe("representative component rendering across locales", () => {
       );
       assertClean(html, missing, locale);
       expect(html).toContain(getMessage(locale, "episodes.heading"));
+    });
+
+    it(`renders NewEpisodePage in ${locale} without missing keys`, () => {
+      const queryClient = new QueryClient();
+      queryClient.setQueryData(["episodes"], []);
+      const { t, missing } = makeTranslate(locale);
+      const value = { locale, setLocale: () => {}, t };
+      const html = renderToStaticMarkup(
+        React.createElement(
+          QueryClientProvider,
+          { client: queryClient },
+          React.createElement(
+            MemoryRouter,
+            null,
+            React.createElement(LocaleContext.Provider, { value }, React.createElement(NewEpisodePage))
+          )
+        )
+      );
+      assertClean(html, missing, locale);
+      expect(html).toContain(getMessage(locale, "new.heading"));
+    });
+  }
+});
+
+describe("chapter validation error messages across locales", () => {
+  for (const locale of SUPPORTED_LOCALES) {
+    it(`localizes chapter time and duration errors in ${locale}`, () => {
+      const { t, missing } = makeTranslate(locale);
+      expect(t("new.chapterTimeError", { time: "bad" })).not.toMatch(/\{\{\w+\}\}/);
+      expect(t("new.chapterExceedsDuration", { title: "Intro" })).not.toMatch(/\{\{\w+\}\}/);
+      expect(missing).toEqual([]);
     });
   }
 });
