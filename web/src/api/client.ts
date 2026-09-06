@@ -6,7 +6,7 @@ import type {
   RunRequestBody,
   JobEventPayload,
   UploadResponse, EpisodeCreateBody, ClipsResponse,
-  PlanResponse, PlanPutResult, TranscriptResponse, PeaksResponse, DeliverablesResponse,
+  PlanResponse, PlanPutResult, ManualCutResult, AISuggestResult, TranscriptResponse, PeaksResponse, DeliverablesResponse,
 } from "./types";
 
 const API_BASE = "/api";
@@ -88,6 +88,37 @@ export async function putPlan(
   if (resp.status === 422) return resp.json();
   if (!resp.ok) throw new Error((await resp.text()) || `${resp.status} ${resp.statusText}`);
   return resp.json();
+}
+
+export async function addManualCut(
+  episodeId: string,
+  partId: string,
+  body: { start: number; end: number; reason?: string }
+): Promise<ManualCutResult> {
+  const resp = await fetch(
+    `${API_BASE}/episodes/${encodeURIComponent(episodeId)}/parts/${encodeURIComponent(partId)}/plan/cuts`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }
+  );
+  // 422 carries a structured { ok: false, errors: string[] } body (audit
+  // failure) rather than a generic error, so parse it instead of throwing.
+  if (resp.status === 422) return resp.json();
+  if (!resp.ok) throw new Error((await resp.text()) || `${resp.status} ${resp.statusText}`);
+  return resp.json();
+}
+
+/** 400 means the profile has no `ai_suggest.command` configured; 502 means
+ * the configured CLI failed or returned something unparsable. Both are
+ * thrown so the caller shows a single inline error rather than a suggestion
+ * list. */
+export function suggestCutsAI(episodeId: string, partId: string, profile = "default"): Promise<AISuggestResult> {
+  return jsonRequest(
+    `${API_BASE}/episodes/${encodeURIComponent(episodeId)}/parts/${encodeURIComponent(partId)}/plan/ai-suggest`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ profile }) }
+  );
 }
 
 export function fetchTranscript(episodeId: string, partId: string): Promise<TranscriptResponse> {

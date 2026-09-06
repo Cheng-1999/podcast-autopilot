@@ -79,3 +79,14 @@ clips:
   min_duration: 30.0
   max_duration: 90.0
   pause_threshold_s: 0.4
+
+# Optional: let the Review page ask a locally installed AI CLI to suggest
+# additional cuts (redundant retakes, off-topic tangents) that the automatic
+# pause/filler detectors don't look for. Disabled by default -- nothing is
+# ever invoked unless `command` is set. The command is run with the prompt on
+# stdin and must reply with a JSON array on stdout (see ai_suggest.py); every
+# suggestion is still validated and requires a one-click human accept in the
+# Review page before it touches plan.json.
+# ai_suggest:
+#   command: ["claude", "-p"]      # or ["codex", "exec"], etc.
+#   timeout_s: 120

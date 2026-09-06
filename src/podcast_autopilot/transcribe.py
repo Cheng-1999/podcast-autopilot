@@ -204,28 +204,44 @@ def write_markdown(segments: list[Segment], path: Path) -> None:
     Path(path).write_text("\n\n".join(paragraphs) + ("\n" if paragraphs else ""), encoding="utf-8")
 
 
+def _load_audio_for_energy(audio_path: Path | str):
+    """Open the audio file once (mmap'd, so pages are only faulted in as
+    touched) so `detect_fillers` can call `find_energy_bounds` for every
+    candidate in an episode without re-opening a (potentially very large,
+    e.g. OneDrive-synced) WAV file per call."""
+    try:
+        import scipy.io.wavfile as wavfile
+
+        sr, data = wavfile.read(audio_path, mmap=True)
+        if data.ndim > 1:
+            data = data[:, 0]
+        return sr, data
+    except Exception:
+        return None
+
+
 def find_energy_bounds(
-    audio_path: Path | str,
+    audio_data,
     search_start: float,
     search_end: float,
     word_start: float,
     word_end: float,
     min_silence_rms: float = 0.01,
 ) -> tuple[float, float]:
-    """Snap word boundaries to acoustic speech onset and offset when audio is available.
+    """Snap word boundaries to acoustic speech onset and offset using a
+    pre-loaded `(sample_rate, samples)` pair (see `_load_audio_for_energy`).
 
     Whisper word-level alignment often lags true acoustic speech onset (especially
     on multi-syllable Chinese particles like '然後' or words following pauses).
     This inspects the RMS energy within the surrounding silence gap to find when
     speech actually begins and ends.
     """
+    if audio_data is None:
+        return word_start, word_end
     try:
         import numpy as np
-        import scipy.io.wavfile as wavfile
 
-        sr, data = wavfile.read(audio_path, mmap=True)
-        if data.ndim > 1:
-            data = data[:, 0]
+        sr, data = audio_data
         duration = len(data) / sr
         search_start = max(0.0, search_start)
         search_end = min(duration, search_end)
@@ -294,6 +310,12 @@ def detect_fillers(
     filler_set = set(filler_words) if filler_words is not None else set(DEFAULT_FILLER_WORDS)
     candidates: list[dict] = []
     has_audio = audio_path is not None and Path(audio_path).is_file()
+    # Loaded once (mmap'd) and reused for every candidate below -- an episode's
+    # clean.wav can be hundreds of MB, and this file may live on a
+    # cloud-synced drive (e.g. OneDrive), so re-opening it per filler word (a
+    # 66-minute episode can have hundreds of them) previously multiplied I/O
+    # latency badly enough to make plan-fillers appear to hang for hours.
+    audio_data = _load_audio_for_energy(audio_path) if has_audio else None
 
     for i in range(1, len(words) - 1):
         w = words[i]
@@ -310,11 +332,11 @@ def detect_fillers(
         cand_start = max(words[i - 1].end + guard_s, w.start - pre_roll_s)
         cand_end = min(words[i + 1].start - guard_s, w.end + post_roll_s)
 
-        if has_audio:
+        if audio_data is not None:
             search_start = words[i - 1].end + guard_s
             search_end = words[i + 1].start - guard_s
             cand_start, cand_end = find_energy_bounds(
-                audio_path=audio_path,
+                audio_data=audio_data,
                 search_start=search_start,
                 search_end=search_end,
                 word_start=cand_start,

@@ -20,6 +20,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
+from .. import ai_suggest as ai_suggest_mod
 from .. import assemble as assemble_mod
 from .. import audit as audit_mod
 from .. import cli as cli_mod
@@ -30,7 +31,7 @@ from .. import run as run_mod
 from ..config import DEFAULT_MODELS_DIR, FFmpegNotFoundError, load_config, resolve_ffmpeg_binaries
 from . import episodes as episodes_mod
 from . import media as media_mod
-from .jobs import EpisodeDeletingError, Job, JobManager
+from .jobs import EpisodeBusyError, EpisodeDeletingError, Job, JobManager
 
 ALLOWED_UPLOAD_EXTENSIONS = {".wav", ".mp3", ".flac", ".m4a"}
 
@@ -317,6 +318,8 @@ def run_episode(episode_id: str, body: RunRequest, request: Request) -> dict:
         )
     except EpisodeDeletingError:
         raise HTTPException(409, "cannot start a job: episode is being deleted")
+    except EpisodeBusyError:
+        raise HTTPException(409, "a job is already running for this episode")
     return job.to_dict()
 
 
@@ -457,6 +460,147 @@ def put_plan(episode_id: str, part_id: str, body: list[PlanItemFlag], request: R
     return {"ok": True, "seconds_removed": result.total_cut_duration, "coverage_ratio": result.coverage_ratio}
 
 
+class ManualCutRequest(BaseModel):
+    start: float
+    end: float
+    reason: str = "manual"
+
+
+def _next_manual_cut_id(items: list[plan_mod.PlanItem]) -> str:
+    existing = {item.id for item in items}
+    n = 1
+    while f"manual-{n:04d}" in existing:
+        n += 1
+    return f"manual-{n:04d}"
+
+
+def _carve_manual_cut(items: list[plan_mod.PlanItem], start: float, end: float) -> list[plan_mod.PlanItem]:
+    """Trim (or split) any "keep" item the new [start, end) cut overlaps, so
+    the partition of keep/cut/fade items stays non-overlapping -- the same
+    shape `audit_plan` requires of every plan, and how the pause planner
+    already represents a removed span (a gap between two keep items). A cut
+    or fade item in the way is left untouched and reported as a genuine
+    conflict by `audit_plan` below, rather than silently resolved here."""
+    result: list[plan_mod.PlanItem] = []
+    for item in items:
+        if item.kind != "keep" or item.end <= start or item.start >= end:
+            result.append(item)
+            continue
+        if item.start < start:
+            result.append(item.model_copy(update={"id": f"{item.id}-a", "end": start}))
+        if item.end > end:
+            result.append(item.model_copy(update={"id": f"{item.id}-b", "start": end}))
+    return result
+
+
+@router.post("/episodes/{episode_id}/parts/{part_id}/plan/cuts")
+def add_manual_cut(episode_id: str, part_id: str, body: ManualCutRequest, request: Request) -> dict:
+    """Add a human-drawn cut to a part's plan -- the only way to remove audio
+    that the automatic pause/filler detectors did not flag (e.g. an off-topic
+    tangent or a mistake to redo). Validated by the same `audit_plan` gate as
+    every other item, so it can never overlap an existing cut/fade item or
+    push total removal past the profile's `max_removed_fraction`."""
+    project_root = _project_root(request)
+    ref = _ref_or_404(project_root, episode_id)
+    part_dir = _part_dir_or_404(project_root, episode_id, ref, part_id)
+    plan_path = part_dir / "plan.json"
+    clean_wav = part_dir / f"{part_id}.clean.wav"
+    if not plan_path.is_file():
+        raise HTTPException(404, "plan.json not found; run the pipeline first")
+    if not clean_wav.is_file():
+        raise HTTPException(404, "clean audio not found; run the pipeline first")
+    if not (body.end > body.start):
+        raise HTTPException(422, f"end ({body.end}) must be after start ({body.start})")
+
+    plan = plan_mod.load_plan(plan_path)
+    new_item = plan_mod.PlanItem(
+        id=_next_manual_cut_id(plan.items),
+        kind="cut",
+        start=body.start,
+        end=body.end,
+        reason=body.reason or "manual",
+        enabled=True,
+    )
+    carved = _carve_manual_cut(plan.items, body.start, body.end)
+    plan.items = sorted([*carved, new_item], key=lambda it: it.start)
+
+    result = audit_mod.audit_plan(plan, clean_wav)
+    if not result.ok:
+        return JSONResponse(status_code=422, content={"ok": False, "errors": result.errors})
+
+    plan_mod.save_plan(plan, plan_path)
+    return {
+        "ok": True,
+        "id": new_item.id,
+        "seconds_removed": result.total_cut_duration,
+        "coverage_ratio": result.coverage_ratio,
+    }
+
+
+class AISuggestRequest(BaseModel):
+    profile: str = "default"
+
+
+@router.post("/episodes/{episode_id}/parts/{part_id}/plan/ai-suggest")
+def ai_suggest_cuts(episode_id: str, part_id: str, body: AISuggestRequest, request: Request) -> dict:
+    """Ask a configured AI CLI (see `ai_suggest.command` in the profile) to
+    propose additional cuts -- redundant retakes, off-topic tangents -- that
+    the automatic pause/filler detectors don't look for. Every candidate is
+    validated with the same `audit_plan` gate as a manual cut and returned
+    for the human to accept individually via `plan/cuts`; nothing is written
+    here and no candidate is ever applied automatically."""
+    project_root = _project_root(request)
+    ref = _ref_or_404(project_root, episode_id)
+    part_dir = _part_dir_or_404(project_root, episode_id, ref, part_id)
+    plan_path = part_dir / "plan.json"
+    transcript_path = part_dir / "transcript.json"
+    clean_wav = part_dir / f"{part_id}.clean.wav"
+    if not plan_path.is_file():
+        raise HTTPException(404, "plan.json not found; run the pipeline first")
+    if not transcript_path.is_file():
+        raise HTTPException(404, "transcript.json not found; run the pipeline first")
+    if not clean_wav.is_file():
+        raise HTTPException(404, "clean audio not found; run the pipeline first")
+
+    profile_config_path = cli_mod._resolve_profile_config_path(body.profile)
+    config = load_config(profile_config_path)
+    if not config.ai_suggest_command:
+        raise HTTPException(400, "ai_suggest is not configured for this profile; set ai_suggest.command")
+
+    plan = plan_mod.load_plan(plan_path)
+    transcript = json.loads(transcript_path.read_text(encoding="utf-8"))
+    prompt = ai_suggest_mod.build_prompt(transcript.get("segments", []), plan.source.duration)
+    try:
+        raw_suggestions = ai_suggest_mod.run_ai_suggest(
+            config.ai_suggest_command, prompt, timeout_s=config.ai_suggest_timeout_s
+        )
+    except ai_suggest_mod.AISuggestError as exc:
+        raise HTTPException(502, str(exc))
+
+    suggestions: list[dict] = []
+    for s in raw_suggestions:
+        if not (s.end > s.start) or s.start < 0 or s.end > plan.source.duration:
+            continue
+        carved = _carve_manual_cut(plan.items, s.start, s.end)
+        candidate_item = plan_mod.PlanItem(
+            id=_next_manual_cut_id(plan.items), kind="cut", start=s.start, end=s.end, reason=s.reason, enabled=True
+        )
+        candidate_plan = plan.model_copy(
+            update={"items": sorted([*carved, candidate_item], key=lambda it: it.start)}
+        )
+        audit = audit_mod.audit_plan(candidate_plan, clean_wav)
+        suggestions.append(
+            {
+                "start": s.start,
+                "end": s.end,
+                "reason": s.reason,
+                "valid": audit.ok,
+                "errors": [] if audit.ok else audit.errors,
+            }
+        )
+    return {"ok": True, "suggestions": suggestions}
+
+
 @router.get("/episodes/{episode_id}/parts/{part_id}/transcript")
 def get_transcript(episode_id: str, part_id: str, request: Request) -> dict:
     project_root = _project_root(request)
@@ -587,6 +731,8 @@ def post_clips(episode_id: str, part_id: str, body: ClipsRequest, request: Reque
         )
     except EpisodeDeletingError:
         raise HTTPException(409, "cannot start clip generation: episode is being deleted")
+    except EpisodeBusyError:
+        raise HTTPException(409, "a job is already running for this episode")
     return job.to_dict()
 
 

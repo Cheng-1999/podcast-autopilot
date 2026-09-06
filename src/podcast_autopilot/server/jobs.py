@@ -25,12 +25,27 @@ from ..config import AppConfig
 
 TERMINAL_STATUSES = {"done", "failed", "cancelled"}
 
+# A stage can legitimately run for a long time (e.g. `large-v3` transcription
+# of a 90-minute episode on CPU), so this is deliberately generous -- it only
+# exists to stop a genuinely stuck stage (a native call blocked on I/O, an
+# infinite loop) from wedging the single job queue and the affected episode's
+# delete/re-run forever. See jobs.py's `_run_worker` for how it is enforced.
+JOB_TIMEOUT_S = 6 * 3600
+
 
 class EpisodeDeletingError(RuntimeError):
     """Raised when a job is submitted for an episode that is concurrently being deleted."""
 
     def __init__(self, episode_id: str) -> None:
         super().__init__(f"episode {episode_id!r} is being deleted")
+        self.episode_id = episode_id
+
+
+class EpisodeBusyError(RuntimeError):
+    """Raised when a job is submitted for an episode that already has one queued or running."""
+
+    def __init__(self, episode_id: str) -> None:
+        super().__init__(f"episode {episode_id!r} already has an active job")
         self.episode_id = episode_id
 
 
@@ -195,6 +210,8 @@ class JobManager:
         with self._lock:
             if episode_id in self._deleting:
                 raise EpisodeDeletingError(episode_id)
+            if self._active_job_for_episode_locked(episode_id) is not None:
+                raise EpisodeBusyError(episode_id)
             self._jobs[job_id] = job
         self._queue.put(job_id)
         return job
@@ -217,6 +234,8 @@ class JobManager:
         with self._lock:
             if episode_id in self._deleting:
                 raise EpisodeDeletingError(episode_id)
+            if self._active_job_for_episode_locked(episode_id) is not None:
+                raise EpisodeBusyError(episode_id)
             self._jobs[job_id] = job
         self._queue.put(job_id)
         return job
@@ -225,24 +244,23 @@ class JobManager:
         with self._lock:
             return self._jobs.get(job_id)
 
-    def active_job_for_episode(self, episode_id: str) -> Optional[Job]:
-        with self._lock:
-            jobs = list(self._jobs.values())
-        for job in jobs:
+    def _active_job_for_episode_locked(self, episode_id: str) -> Optional[Job]:
+        """Caller must hold self._lock."""
+        for job in self._jobs.values():
             if job.episode_id == episode_id and job.status in ("queued", "running"):
                 return job
         return None
+
+    def active_job_for_episode(self, episode_id: str) -> Optional[Job]:
+        with self._lock:
+            return self._active_job_for_episode_locked(episode_id)
 
     def begin_delete(self, episode_id: str) -> bool:
         """Atomically check for an active job and mark the episode as being
         deleted, so a job submitted concurrently with a delete cannot race
         it. Returns False (no state change) if a job is already active."""
         with self._lock:
-            active = any(
-                job.episode_id == episode_id and job.status in ("queued", "running")
-                for job in self._jobs.values()
-            )
-            if active:
+            if self._active_job_for_episode_locked(episode_id) is not None:
                 return False
             self._deleting.add(episode_id)
             return True
@@ -259,25 +277,63 @@ class JobManager:
         return True
 
     def _run_worker(self) -> None:
+        # This loop must never die: it is the only thing that drains the
+        # queue, so an unhandled exception here (even one raised while just
+        # setting a job up, before its own `run_episode` try/except) would
+        # silently freeze every job for every episode submitted afterward,
+        # each stuck forever as "queued". Every branch below is defensive
+        # for exactly that reason.
         while True:
             job_id = self._queue.get()
-            job = self.get(job_id)
-            if job is None:
-                continue
-            if job.cancel_requested:
-                job.status = "cancelled"
-                job.finished_at = time.time()
-                job.add_event("job_cancelled")
-                continue
-            self._run_job(job)
+            try:
+                job = self.get(job_id)
+                if job is None:
+                    continue
+                if job.cancel_requested:
+                    job.status = "cancelled"
+                    job.finished_at = time.time()
+                    job.add_event("job_cancelled")
+                    continue
+                self._run_job_with_timeout(job)
+            except Exception as exc:  # pragma: no cover - defensive: keep the worker alive no matter what
+                job = self.get(job_id)
+                if job is not None and not job.is_terminal():
+                    job.status = "failed"
+                    job.error = f"{type(exc).__name__}: {exc}"
+                    job.finished_at = time.time()
+                    job.add_event("job_failed", message=job.error)
+
+    def _run_job_with_timeout(self, job: Job) -> None:
+        """Run the job on its own thread and give up waiting after
+        JOB_TIMEOUT_S so one stuck job (e.g. blocked on I/O) cannot wedge the
+        queue or the episode's delete/re-run forever. If the job is still
+        running when the timeout fires, its thread is abandoned (Python
+        cannot forcibly kill a thread blocked in a native call) and it may
+        keep writing to the episode's output files in the background --
+        restarting the dashboard is the only way to fully stop it."""
+        thread = threading.Thread(target=self._run_job, args=(job,), daemon=True)
+        thread.start()
+        thread.join(JOB_TIMEOUT_S)
+        if thread.is_alive() and not job.is_terminal():
+            job.status = "failed"
+            job.error = f"job exceeded the {JOB_TIMEOUT_S}s time limit and was abandoned"
+            job.finished_at = time.time()
+            job.add_event("job_failed", message=job.error)
 
     def _run_job(self, job: Job) -> None:
-        job.status = "running"
-        job.started_at = time.time()
-        job.add_event("job_started")
+        try:
+            job.status = "running"
+            job.started_at = time.time()
+            job.add_event("job_started")
 
-        job.log_path = Path(job.out_dir) / job.episode_id / f"dashboard-job-{job.id}.log"
-        job.log_path.parent.mkdir(parents=True, exist_ok=True)
+            job.log_path = Path(job.out_dir) / job.episode_id / f"dashboard-job-{job.id}.log"
+            job.log_path.parent.mkdir(parents=True, exist_ok=True)
+        except Exception as exc:
+            job.status = "failed"
+            job.error = f"{type(exc).__name__}: {exc}"
+            job.add_event("job_failed", message=job.error)
+            job.finished_at = time.time()
+            return
 
         def on_progress(evt: dict) -> None:
             job.add_event(evt["event"], stage=evt.get("stage"), part=evt.get("part"), elapsed=evt.get("elapsed", 0.0))

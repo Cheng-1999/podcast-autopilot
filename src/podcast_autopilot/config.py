@@ -40,6 +40,11 @@ class AppConfig:
     denoise_engine: str = "auto"
     voice_chain: "VoiceChainConfig" = None  # type: ignore[assignment]
     clips: "ClipsConfig" = None  # type: ignore[assignment]
+    # A CLI to shell out to for AI-suggested cuts (e.g. ["claude", "-p"], ["codex", "exec"]).
+    # None (the default) disables the feature entirely -- nothing is ever invoked or sent
+    # anywhere unless a profile opts in explicitly. See ai_suggest.py.
+    ai_suggest_command: list[str] | None = None
+    ai_suggest_timeout_s: float = 120.0
 
     def __post_init__(self) -> None:
         if self.pauses is None:
@@ -102,6 +107,8 @@ def load_config(config_path: Path | None = None) -> AppConfig:
     clips = data.get("clips") or {}
     denoise = data.get("denoise") or {}
     engine = str(denoise.get("engine", voice.get("denoise_engine", "auto")))
+    ai_suggest = data.get("ai_suggest") or {}
+    ai_suggest_command = ai_suggest.get("command")
     return AppConfig(
         ffmpeg_path=data.get("ffmpeg_path"),
         loudness_target_i=float(data.get("loudness_target_i", -16.0)),
@@ -117,6 +124,8 @@ def load_config(config_path: Path | None = None) -> AppConfig:
         filler_carve_padding_start_s=float(data.get("filler_carve_padding_start_s", 0.0)),
         filler_carve_padding_end_s=float(data.get("filler_carve_padding_end_s", 0.0)),
         denoise_engine=engine,
+        ai_suggest_command=list(ai_suggest_command) if ai_suggest_command else None,
+        ai_suggest_timeout_s=float(ai_suggest.get("timeout_s", 120.0)),
         clips=ClipsConfig(
             keywords=list(clips.get("keywords", [])),
             min_duration=float(clips.get("min_duration", 30.0)),

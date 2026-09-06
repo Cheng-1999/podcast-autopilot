@@ -138,6 +138,27 @@ export interface PlanPutResult {
   errors?: string[];
 }
 
+export interface ManualCutResult {
+  ok: boolean;
+  id?: string;
+  seconds_removed?: number;
+  coverage_ratio?: number;
+  errors?: string[];
+}
+
+export interface AISuggestedCut {
+  start: number;
+  end: number;
+  reason: string;
+  valid: boolean;
+  errors: string[];
+}
+
+export interface AISuggestResult {
+  ok: boolean;
+  suggestions: AISuggestedCut[];
+}
+
 export interface TranscriptWord {
   word: string;
   start: number;

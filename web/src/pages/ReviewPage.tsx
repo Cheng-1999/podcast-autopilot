@@ -7,11 +7,13 @@ import {
   fetchTranscript,
   fetchPeaks,
   putPlan,
+  addManualCut,
+  suggestCutsAI,
   runEpisode,
   mediaUrl,
   parseReapplyOptions,
 } from "../api/client";
-import type { EpisodeDetail, PlanItem, PlanResponse, TranscriptResponse, PeaksResponse } from "../api/types";
+import type { EpisodeDetail, PlanItem, PlanResponse, TranscriptResponse, PeaksResponse, AISuggestedCut } from "../api/types";
 import { Waveform } from "../components/Waveform";
 import { ItemList } from "../components/ItemList";
 import { TranscriptPane } from "../components/TranscriptPane";
@@ -89,6 +91,12 @@ export const ReviewPage: React.FC = () => {
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [pendingCutStart, setPendingCutStart] = useState<number | null>(null);
+  const [addingCut, setAddingCut] = useState(false);
+  const [aiSuggestions, setAiSuggestions] = useState<AISuggestedCut[] | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [acceptingIndex, setAcceptingIndex] = useState<number | null>(null);
 
   const audioRef = useRef<HTMLAudioElement>(null);
   const snippetStopRef = useRef<number | null>(null);
@@ -100,6 +108,9 @@ export const ReviewPage: React.FC = () => {
       setSelectedItemId(plan.items[0]?.id ?? null);
       setErrors([]);
       setSaveState("idle");
+      setPendingCutStart(null);
+      setAiSuggestions(null);
+      setAiError(null);
     }
   }, [plan]);
 
@@ -162,6 +173,86 @@ export const ReviewPage: React.FC = () => {
     } else {
       audio.pause();
     }
+  }, []);
+
+  const markCutStart = useCallback(() => {
+    setPendingCutStart(currentTime);
+  }, [currentTime]);
+
+  const cancelPendingCut = useCallback(() => {
+    setPendingCutStart(null);
+  }, []);
+
+  const confirmCut = useCallback(async () => {
+    if (pendingCutStart === null || !activePart) return;
+    const start = Math.min(pendingCutStart, currentTime);
+    const end = Math.max(pendingCutStart, currentTime);
+    if (end - start < 0.01) {
+      setErrors([t("review.addCutFailed") + " range is too short"]);
+      return;
+    }
+    setAddingCut(true);
+    try {
+      const result = await addManualCut(id, activePart, { start, end, reason: "manual" });
+      if (!result.ok) {
+        setErrors((result.errors ?? []).map((e) => `${t("review.addCutFailed")} ${e}`));
+        return;
+      }
+      setPendingCutStart(null);
+      setErrors([]);
+      await queryClient.invalidateQueries({ queryKey: ["plan", id, activePart] });
+      queryClient.invalidateQueries({ queryKey: ["episode", id] });
+    } catch (err) {
+      setErrors([`${t("review.addCutFailed")} ${(err as Error).message}`]);
+    } finally {
+      setAddingCut(false);
+    }
+  }, [pendingCutStart, currentTime, activePart, id, queryClient, t]);
+
+  const requestAiSuggestions = useCallback(async () => {
+    if (!activePart) return;
+    setAiLoading(true);
+    setAiError(null);
+    try {
+      const result = await suggestCutsAI(id, activePart);
+      setAiSuggestions(result.suggestions);
+    } catch (err) {
+      setAiError((err as Error).message);
+      setAiSuggestions(null);
+    } finally {
+      setAiLoading(false);
+    }
+  }, [id, activePart]);
+
+  const acceptAiSuggestion = useCallback(
+    async (index: number) => {
+      const suggestion = aiSuggestions?.[index];
+      if (!suggestion || !activePart) return;
+      setAcceptingIndex(index);
+      try {
+        const result = await addManualCut(id, activePart, {
+          start: suggestion.start,
+          end: suggestion.end,
+          reason: suggestion.reason,
+        });
+        if (!result.ok) {
+          setAiError((result.errors ?? []).join("; "));
+          return;
+        }
+        setAiSuggestions((prev) => (prev ? prev.filter((_, i) => i !== index) : prev));
+        await queryClient.invalidateQueries({ queryKey: ["plan", id, activePart] });
+        queryClient.invalidateQueries({ queryKey: ["episode", id] });
+      } catch (err) {
+        setAiError((err as Error).message);
+      } finally {
+        setAcceptingIndex(null);
+      }
+    },
+    [aiSuggestions, activePart, id, queryClient]
+  );
+
+  const dismissAiSuggestion = useCallback((index: number) => {
+    setAiSuggestions((prev) => (prev ? prev.filter((_, i) => i !== index) : prev));
   }, []);
 
   const doSave = useCallback(async (): Promise<boolean> => {
@@ -387,6 +478,23 @@ export const ReviewPage: React.FC = () => {
           <span className="mono tabular-nums">
             {formatTimeTenths(currentTime, locale)} / {formatTimeTenths(duration, locale)}
           </span>
+          {pendingCutStart === null ? (
+            <button type="button" className="dense-btn" onClick={markCutStart} disabled={!audioSrc}>
+              {t("review.markCutStart")}
+            </button>
+          ) : (
+            <>
+              <span className="mono tabular-nums">
+                {t("review.cuttingFrom", { start: formatTimeTenths(pendingCutStart, locale) })}
+              </span>
+              <button type="button" className="dense-btn primary" onClick={confirmCut} disabled={addingCut}>
+                {t("review.confirmCut")}
+              </button>
+              <button type="button" className="dense-btn" onClick={cancelPendingCut} disabled={addingCut}>
+                {t("common.cancel")}
+              </button>
+            </>
+          )}
           <span><span style={{ color: "rgb(229,72,77)" }}>■</span> {t("review.legendCut")}</span>
           <span><span style={{ color: "rgb(245,165,36)" }}>■</span> {t("review.legendFiller")}</span>
           <span><span style={{ color: "rgb(76,141,255)" }}>▢</span> {t("review.legendClip")}</span>
@@ -402,6 +510,53 @@ export const ReviewPage: React.FC = () => {
           onSeek={seek}
           onSelectItem={selectItem}
         />
+      </div>
+
+      <div
+        style={{
+          border: "var(--border-subtle)",
+          borderRadius: "var(--radius-max)",
+          backgroundColor: "var(--surface-panel)",
+          padding: "8px 12px",
+          display: "flex",
+          flexDirection: "column",
+          gap: "6px",
+          fontSize: "var(--font-size-sm)",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <button type="button" className="dense-btn" onClick={requestAiSuggestions} disabled={aiLoading || !activePart}>
+            {aiLoading ? t("review.aiSuggestLoading") : t("review.aiSuggest")}
+          </button>
+          {aiError && <span style={{ color: "var(--semantic-red)" }}>{aiError}</span>}
+          {aiSuggestions && aiSuggestions.length === 0 && !aiError && (
+            <span style={{ color: "var(--text-muted)" }}>{t("review.aiSuggestNone")}</span>
+          )}
+        </div>
+        {aiSuggestions && aiSuggestions.length > 0 && (
+          <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "4px" }}>
+            {aiSuggestions.map((s, i) => (
+              <li key={i} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <span className="mono tabular-nums">
+                  {formatTimeTenths(s.start, locale)}–{formatTimeTenths(s.end, locale)}
+                </span>
+                <span style={{ color: "var(--text-muted)", flex: 1 }}>{s.reason}</span>
+                {!s.valid && <span style={{ color: "var(--semantic-red)" }}>{s.errors.join("; ")}</span>}
+                <button
+                  type="button"
+                  className="dense-btn primary"
+                  disabled={!s.valid || acceptingIndex === i}
+                  onClick={() => acceptAiSuggestion(i)}
+                >
+                  {t("review.aiSuggestAccept")}
+                </button>
+                <button type="button" className="dense-btn" disabled={acceptingIndex === i} onClick={() => dismissAiSuggestion(i)}>
+                  {t("review.aiSuggestDismiss")}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       <div

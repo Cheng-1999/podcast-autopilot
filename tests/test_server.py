@@ -9,7 +9,9 @@ import yaml
 from fastapi.testclient import TestClient
 
 from podcast_autopilot.ffmpeg import generate_synthetic_audio
+from podcast_autopilot.plan import PlanItem
 from podcast_autopilot.server import create_app
+from podcast_autopilot.server.routes import _carve_manual_cut
 
 
 def _make_project(tmp_path: Path) -> Path:
@@ -263,6 +265,138 @@ def test_plan_put_persists_valid_change_and_rejects_invalid_without_writing(clie
     assert ok_resp.status_code == 200
     saved = json.loads(plan_path.read_text(encoding="utf-8"))
     assert any(it["id"] == keep_item["id"] and it["enabled"] is True for it in saved["items"])
+
+
+def test_carve_manual_cut_on_cut_only_plan_leaves_existing_cuts_untouched():
+    # Real pipeline output for a part with no explicit "keep" items (e.g.
+    # plan-pauses' output): nothing here is a "keep" item, so nothing should
+    # be split -- audit_plan's own overlap check is what rejects a genuine
+    # conflict with an existing cut.
+    items = [
+        PlanItem(id="cut-0001", kind="cut", start=0.0, end=1.0, reason="pause"),
+        PlanItem(id="cut-0002", kind="cut", start=5.0, end=6.0, reason="pause"),
+    ]
+    carved = _carve_manual_cut(items, start=2.0, end=3.0)
+    assert carved == items
+
+
+def test_carve_manual_cut_splits_and_drops_keep_items():
+    items = [
+        PlanItem(id="keep-0001", kind="keep", start=0.0, end=10.0, reason="identity"),
+    ]
+
+    # Cut fully inside the keep item: split into a "before" and "after" piece.
+    split = _carve_manual_cut(items, start=4.0, end=6.0)
+    assert {(it.id, it.start, it.end) for it in split} == {
+        ("keep-0001-a", 0.0, 4.0),
+        ("keep-0001-b", 6.0, 10.0),
+    }
+
+    # Cut covering the whole keep item: it disappears entirely.
+    covered = _carve_manual_cut(items, start=0.0, end=10.0)
+    assert covered == []
+
+    # Cut touching only the tail: only a "before" piece remains.
+    tail = _carve_manual_cut(items, start=8.0, end=10.0)
+    assert [(it.id, it.start, it.end) for it in tail] == [("keep-0001-a", 0.0, 8.0)]
+
+
+def test_add_manual_cut_persists_and_rejects_overlap(client):
+    c, root = client
+    run_resp = c.post("/api/episodes/episode.example/run", json={"force": True})
+    _wait_for_job(c, run_resp.json()["id"])
+
+    plan_path = root / "out" / "episode.example" / "parts" / "part1" / "plan.json"
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    keep_item = next(it for it in plan["items"] if it["kind"] == "keep")
+    duration = keep_item["end"] - keep_item["start"]
+
+    resp = c.post(
+        "/api/episodes/episode.example/parts/part1/plan/cuts",
+        json={"start": 0.0, "end": min(0.05, duration / 4), "reason": "test manual cut"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["id"] == "manual-0001"
+
+    saved = json.loads(plan_path.read_text(encoding="utf-8"))
+    added = next(it for it in saved["items"] if it["id"] == "manual-0001")
+    assert added["kind"] == "cut"
+    assert added["reason"] == "test manual cut"
+    assert added["enabled"] is True
+
+    # A second cut overlapping the one just added must be rejected without
+    # touching the file (audit_plan's overlap check is fail-closed).
+    before = plan_path.read_text(encoding="utf-8")
+    bad_resp = c.post(
+        "/api/episodes/episode.example/parts/part1/plan/cuts",
+        json={"start": 0.0, "end": min(0.05, duration / 4)},
+    )
+    assert bad_resp.status_code == 422
+    assert bad_resp.json()["errors"]
+    assert plan_path.read_text(encoding="utf-8") == before
+
+    # end <= start is a plain 422, not a 500.
+    invalid_resp = c.post(
+        "/api/episodes/episode.example/parts/part1/plan/cuts",
+        json={"start": 1.0, "end": 1.0},
+    )
+    assert invalid_resp.status_code == 422
+
+
+def test_ai_suggest_cuts_rejects_when_not_configured(client):
+    c, root = client
+    run_resp = c.post("/api/episodes/episode.example/run", json={"force": True})
+    _wait_for_job(c, run_resp.json()["id"])
+
+    resp = c.post("/api/episodes/episode.example/parts/part1/plan/ai-suggest", json={})
+    assert resp.status_code == 400
+    assert "ai_suggest" in resp.json()["detail"]
+
+
+def test_ai_suggest_cuts_returns_validated_candidates(client, monkeypatch):
+    c, root = client
+    run_resp = c.post("/api/episodes/episode.example/run", json={"force": True})
+    _wait_for_job(c, run_resp.json()["id"])
+
+    (root / "profiles").mkdir(exist_ok=True)
+    (root / "profiles" / "default.yaml").write_text(
+        yaml.safe_dump({"ai_suggest": {"command": ["fake-cli", "-p"]}}), encoding="utf-8"
+    )
+
+    plan_path = root / "out" / "episode.example" / "parts" / "part1" / "plan.json"
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    keep_item = next(it for it in plan["items"] if it["kind"] == "keep")
+    duration = keep_item["end"] - keep_item["start"]
+    good_end = min(0.1, duration / 4)
+
+    from podcast_autopilot import ai_suggest as ai_suggest_mod
+
+    def fake_run_ai_suggest(command, prompt, timeout_s):
+        assert command == ["fake-cli", "-p"]
+        return [
+            ai_suggest_mod.CutSuggestion(start=0.0, end=good_end, reason="redundant retake"),
+            ai_suggest_mod.CutSuggestion(start=0.0, end=good_end, reason="duplicate of the one above"),
+        ]
+
+    monkeypatch.setattr(ai_suggest_mod, "run_ai_suggest", fake_run_ai_suggest)
+
+    resp = c.post("/api/episodes/episode.example/parts/part1/plan/ai-suggest", json={})
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["ok"] is True
+    assert len(body["suggestions"]) == 2
+    # Each suggestion is audited independently against the plan as currently
+    # saved on disk (not against previously-listed suggestions), so two
+    # suggestions that happen to overlap each other are both reported valid
+    # here -- accepting one via plan/cuts is what would make the other
+    # (now-overlapping) one rejected on a later request.
+    assert body["suggestions"][0]["valid"] is True
+    assert body["suggestions"][1]["valid"] is True
+
+    # plan.json on disk must be untouched: suggestions are never auto-applied.
+    assert json.loads(plan_path.read_text(encoding="utf-8")) == plan
 
 
 def test_media_range_request_returns_partial_content(client):

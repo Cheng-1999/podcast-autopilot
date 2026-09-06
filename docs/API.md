@@ -27,6 +27,8 @@ When `web/dist` exists, all other non-API routes serve static assets with an SPA
 - [Part Plans & Transcripts](#part-plans--transcripts)
   - [`GET /api/episodes/{id}/parts/{part}/plan`](#get-apiepisodesidpartspartplan)
   - [`PUT /api/episodes/{id}/parts/{part}/plan`](#put-apiepisodesidpartspartplan)
+  - [`POST /api/episodes/{id}/parts/{part}/plan/cuts`](#post-apiepisodesidpartspartplancuts)
+  - [`POST /api/episodes/{id}/parts/{part}/plan/ai-suggest`](#post-apiepisodesidpartspartplanai-suggest)
   - [`GET /api/episodes/{id}/parts/{part}/transcript`](#get-apiepisodesidpartsparttranscript)
   - [`GET /api/episodes/{id}/parts/{part}/peaks`](#get-apiepisodesidpartspartpeaks)
 - [Clips](#clips)
@@ -625,6 +627,66 @@ The file is saved **only** if the audit passes. If the audit fails, the original
   ]
 }
 ```
+
+---
+
+### `POST /api/episodes/{id}/parts/{part}/plan/cuts`
+
+Adds a human-drawn cut to `plan.json` -- the only way to remove audio the automatic pause/filler detectors did not
+flag (an off-topic tangent, a mistake to redo). Any existing `keep` item the new range overlaps is trimmed or split
+so the plan stays a non-overlapping partition; an existing `cut`/`fade` item in the way is left alone and reported
+as a conflict. Validated with the same `audit_mod.audit_plan` gate as `PUT .../plan`, and saved only if it passes.
+
+#### Request Body
+
+```json
+{ "start": 12.4, "end": 18.9, "reason": "off-topic tangent" }
+```
+
+`reason` is optional (defaults to `"manual"`).
+
+#### Response (200 OK)
+
+```json
+{ "ok": true, "id": "manual-0001", "seconds_removed": 8.6, "coverage_ratio": 0.98 }
+```
+
+#### Error Responses
+- `404 Not Found`: `plan.json` or the part's clean audio not found.
+- `422 Unprocessable Entity`: `end <= start`, or the audit rejected the result (`{"ok": false, "errors": [...]}`).
+
+---
+
+### `POST /api/episodes/{id}/parts/{part}/plan/ai-suggest`
+
+Asks a locally installed AI CLI (configured via `ai_suggest.command` in the profile, e.g. `["claude", "-p"]`) to
+review the part's transcript and propose additional cuts -- redundant retakes, off-topic tangents -- the same
+categories a human would look for manually. Every candidate is validated with `audit_mod.audit_plan` against the
+*current* `plan.json` and returned for review; **nothing is written to disk by this endpoint**. Accept a suggestion
+by calling `POST .../plan/cuts` with its `start`/`end`/`reason`.
+
+#### Request Body
+
+```json
+{ "profile": "default" }
+```
+
+#### Response (200 OK)
+
+```json
+{
+  "ok": true,
+  "suggestions": [
+    { "start": 42.0, "end": 47.5, "reason": "redundant retake of the intro", "valid": true, "errors": [] },
+    { "start": 90.0, "end": 95.0, "reason": "off-topic tangent", "valid": false, "errors": ["item ... overlaps with keep-0"] }
+  ]
+}
+```
+
+#### Error Responses
+- `400 Bad Request`: `ai_suggest.command` is not set for the resolved profile.
+- `404 Not Found`: `plan.json`, `transcript.json`, or the part's clean audio not found.
+- `502 Bad Gateway`: the configured CLI was not found, timed out, exited non-zero, or did not reply with a JSON array.
 
 ---
 
