@@ -126,21 +126,21 @@ class _JobOutputProxy:
 
 
 _output_proxy_lock = threading.Lock()
-_output_proxies_installed = False
-
-
 def _install_output_proxies() -> None:
-    global _output_proxies_installed
+    """Ensure the current process streams route job-context output.
+
+    Test runners and hosted servers can replace ``sys.stdout``/``sys.stderr``
+    after a ``JobManager`` has been created.  A process-global "installed"
+    flag would then leave the replacement stream unwrapped, so job output
+    would bypass its log file.  Wrap the current stream whenever it is not
+    already one of our proxies; the current stream remains the fallback for
+    non-job output (including pytest capture).
+    """
     with _output_proxy_lock:
-        if _output_proxies_installed:
-            return
-        # Use the interpreter-owned streams as stable fallbacks.  In tests and
-        # hosted servers, sys.stdout may be temporarily replaced and later
-        # closed; retaining that object here would make later non-job writes
-        # fail after the replacement ends.
-        sys.stdout = _JobOutputProxy(sys.__stdout__, _stdout_writer)
-        sys.stderr = _JobOutputProxy(sys.__stderr__, _stderr_writer)
-        _output_proxies_installed = True
+        if not isinstance(sys.stdout, _JobOutputProxy):
+            sys.stdout = _JobOutputProxy(sys.stdout, _stdout_writer)
+        if not isinstance(sys.stderr, _JobOutputProxy):
+            sys.stderr = _JobOutputProxy(sys.stderr, _stderr_writer)
 
 
 class Job:
@@ -428,6 +428,11 @@ class JobManager:
             self._abandoned_episodes.discard(episode_id)
 
     def _run_job(self, job: Job) -> None:
+        # Pytest and some hosted runtimes swap the process streams between
+        # lifecycle phases.  Re-check here, immediately before any job setup
+        # or pipeline output, so a stream replacement after JobManager
+        # construction cannot bypass the per-job tee.
+        _install_output_proxies()
         try:
             job.status = "running"
             job.started_at = time.time()

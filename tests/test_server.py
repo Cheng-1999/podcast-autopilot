@@ -8,8 +8,9 @@ import pytest
 import yaml
 from fastapi.testclient import TestClient
 
+from podcast_autopilot.audit import audit_plan, sha256_of_file
 from podcast_autopilot.ffmpeg import generate_synthetic_audio
-from podcast_autopilot.plan import PlanItem
+from podcast_autopilot.plan import EditPlan, PlanItem, ProfileInfo, SourceInfo
 from podcast_autopilot.server import create_app
 from podcast_autopilot.server.routes import _carve_manual_cut
 
@@ -299,6 +300,73 @@ def test_carve_manual_cut_splits_and_drops_keep_items():
     # Cut touching only the tail: only a "before" piece remains.
     tail = _carve_manual_cut(items, start=8.0, end=10.0)
     assert [(it.id, it.start, it.end) for it in tail] == [("keep-0001-a", 0.0, 8.0)]
+
+
+def test_carve_manual_cut_splits_and_drops_overlapping_filler_items():
+    # T-0021-F1 round-1 review: a filler item (a proposal nested inside a
+    # keep span, see audit.ALLOWED_KINDS) left untouched by a manual/AI cut
+    # that overlaps it would end up pointing at audio the cut just removed --
+    # audit_plan then rejects the whole plan as "not inside any keep span".
+    # The filler item must be trimmed/split at the same boundaries as the
+    # keep item it lives in.
+    items = [
+        PlanItem(id="keep-0001", kind="keep", start=0.0, end=10.0, reason="identity"),
+        PlanItem(id="filler-0001", kind="filler", start=4.0, end=6.0, reason="um"),
+    ]
+
+    # Cut fully covering the filler (and only part of the keep item): the
+    # filler is dropped entirely, same as a keep item would be.
+    covered = _carve_manual_cut(items, start=3.0, end=7.0)
+    assert {(it.id, it.start, it.end) for it in covered} == {
+        ("keep-0001-a", 0.0, 3.0),
+        ("keep-0001-b", 7.0, 10.0),
+    }
+
+    # Cut overlapping only the tail half of the filler: filler is trimmed to
+    # its surviving "before" piece, at the same boundary as the keep split.
+    tail = _carve_manual_cut(items, start=5.0, end=8.0)
+    assert {(it.id, it.start, it.end) for it in tail} == {
+        ("keep-0001-a", 0.0, 5.0),
+        ("keep-0001-b", 8.0, 10.0),
+        ("filler-0001-a", 4.0, 5.0),
+    }
+
+    # Cut fully inside the filler: filler splits into "before" and "after"
+    # pieces, both still nested inside their respective keep splits.
+    split = _carve_manual_cut(items, start=4.5, end=5.5)
+    assert {(it.id, it.start, it.end) for it in split} == {
+        ("keep-0001-a", 0.0, 4.5),
+        ("keep-0001-b", 5.5, 10.0),
+        ("filler-0001-a", 4.0, 4.5),
+        ("filler-0001-b", 5.5, 6.0),
+    }
+
+
+def test_manual_cut_overlapping_filler_item_passes_audit(tmp_path: Path):
+    # End-to-end version of the carve fix above: a manual cut overlapping an
+    # existing filler item must produce a plan that `audit_plan` accepts, not
+    # one it rejects for the filler no longer being inside a keep span.
+    audio_path = tmp_path / "source.bin"
+    audio_path.write_bytes(b"not really audio, just needs stable bytes for a hash" * 100)
+    source = SourceInfo(path=str(audio_path), sha256=sha256_of_file(audio_path), duration=10.0, sr=44100, channels=1)
+    items = [
+        PlanItem(id="keep-0001", kind="keep", start=0.0, end=10.0, reason="identity"),
+        PlanItem(id="filler-0001", kind="filler", start=4.0, end=6.0, reason="um", enabled=True),
+    ]
+    plan = EditPlan(
+        schema="podcast-autopilot.edit-plan/v1",
+        created="2026-09-07T00:00:00+00:00",
+        source=source,
+        profile=ProfileInfo(name="test", max_removed_fraction=0.5),
+        items=items,
+    )
+
+    carved = _carve_manual_cut(plan.items, start=5.0, end=8.0)
+    new_item = PlanItem(id="manual-0001", kind="cut", start=5.0, end=8.0, reason="manual", enabled=True)
+    plan.items = sorted([*carved, new_item], key=lambda it: it.start)
+
+    result = audit_plan(plan, audio_path)
+    assert result.ok, result.errors
 
 
 def test_add_manual_cut_persists_and_rejects_overlap(client):

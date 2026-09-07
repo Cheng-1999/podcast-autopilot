@@ -478,12 +478,22 @@ def _carve_manual_cut(items: list[plan_mod.PlanItem], start: float, end: float) 
     """Trim (or split) any "keep" item the new [start, end) cut overlaps, so
     the partition of keep/cut/fade items stays non-overlapping -- the same
     shape `audit_plan` requires of every plan, and how the pause planner
-    already represents a removed span (a gap between two keep items). A cut
-    or fade item in the way is left untouched and reported as a genuine
-    conflict by `audit_plan` below, rather than silently resolved here."""
+    already represents a removed span (a gap between two keep items).
+
+    "filler" items are trimmed/split the same way: they are proposal
+    annotations that must sit fully inside a keep span (see
+    audit.ALLOWED_KINDS / PARTITION_KINDS), so a manual or AI-suggested cut
+    that overlaps one would otherwise leave it pointing at audio the new cut
+    just removed, which `audit_plan` rejects as "not inside any keep span".
+    Splitting a filler at the same boundaries used for the keep item it
+    lives in keeps both pieces inside the resulting keep spans.
+
+    A cut or fade item in the way is left untouched and reported as a
+    genuine conflict by `audit_plan` below, rather than silently resolved
+    here."""
     result: list[plan_mod.PlanItem] = []
     for item in items:
-        if item.kind != "keep" or item.end <= start or item.start >= end:
+        if item.kind not in ("keep", "filler") or item.end <= start or item.start >= end:
             result.append(item)
             continue
         if item.start < start:
