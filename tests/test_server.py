@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import sys
 import time
 from pathlib import Path
 
@@ -547,3 +549,39 @@ def test_spa_fallback_serves_index_and_assets(tmp_path, monkeypatch):
         api_missing = c.get("/api/nonexistent")
         assert api_missing.status_code == 404
         assert api_missing.json() == {"detail": "not found"}
+
+
+def test_loop_exception_handler_silences_benign_proactor_reset(monkeypatch, tmp_path):
+    from podcast_autopilot.server.app import _loop_exception_handler
+
+    calls = []
+    loop = type("FakeLoop", (), {"default_exception_handler": lambda self, ctx: calls.append(ctx)})()
+
+    reset_exc = ConnectionResetError("forcibly closed")
+    reset_exc.winerror = 10054
+    _loop_exception_handler(loop, {"exception": reset_exc, "message": "..."})
+    assert calls == []
+
+    other_exc = ConnectionResetError("forcibly closed")
+    other_exc.winerror = 10053
+    _loop_exception_handler(loop, {"exception": other_exc, "message": "..."})
+    assert len(calls) == 1
+
+    value_exc = ValueError("unrelated")
+    _loop_exception_handler(loop, {"exception": value_exc, "message": "..."})
+    assert len(calls) == 2
+
+    _loop_exception_handler(loop, {"message": "no exception key"})
+    assert len(calls) == 3
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="ProactorEventLoop exception handler is Windows-only")
+def test_lifespan_installs_loop_exception_handler_on_windows():
+    from podcast_autopilot.server.app import _lifespan, _loop_exception_handler
+
+    async def run() -> None:
+        async with _lifespan(None):
+            loop = asyncio.get_running_loop()
+            assert loop.get_exception_handler() is _loop_exception_handler
+
+    asyncio.run(run())
