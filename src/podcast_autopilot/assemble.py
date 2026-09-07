@@ -253,7 +253,7 @@ def _loudnorm_once(input_path: Path, output_path: Path, target_i: float, target_
     measure_filter = f"loudnorm=I={target_i:g}:TP={target_tp:g}:LRA={target_lra:g}:print_format=json"
     first = subprocess.run(
         [str(ffmpeg), "-hide_banner", "-nostats", "-i", str(input_path), "-af", measure_filter, "-f", "null", "-"],
-        capture_output=True, text=True,
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
     )
     if first.returncode:
         raise FFmpegError(f"assemble loudnorm measure pass failed: {first.stderr}")

@@ -163,7 +163,7 @@ def clean_audio(source: Path, out_dir: Path = Path("out"), config: AppConfig | N
         def measure_through(graph: str) -> dict:
             proc = subprocess.run(
                 [str(ffmpeg), "-hide_banner", "-nostats", "-i", str(input_path), "-af", graph, "-f", "null", "-"],
-                capture_output=True, text=True,
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
             )
             if proc.returncode:
                 raise FFmpegError(f"voice chain measurement pass failed: {proc.stderr}")

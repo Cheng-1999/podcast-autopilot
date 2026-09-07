@@ -22,7 +22,11 @@ def run_ffprobe_json(path: Path, config: AppConfig | None = None) -> dict:
         "-show_streams",
         str(path),
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    # ffmpeg/ffprobe output can contain metadata in encodings that are not
+    # representable by the Windows system codec (commonly cp1252).  Explicit
+    # decoding keeps a single malformed log byte from aborting an otherwise
+    # valid probe and being reported by the upload API as HTTP 415.
+    result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if result.returncode != 0:
         raise FFmpegError(f"ffprobe failed for {path}: {result.stderr.strip()}")
     return json.loads(result.stdout)
@@ -31,7 +35,7 @@ def run_ffprobe_json(path: Path, config: AppConfig | None = None) -> dict:
 def run_ffmpeg(args: list[str], config: AppConfig | None = None) -> subprocess.CompletedProcess:
     ffmpeg, _ = resolve_ffmpeg_binaries(config)
     cmd = [str(ffmpeg), "-hide_banner", "-y", *args]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if result.returncode != 0:
         raise FFmpegError(f"ffmpeg failed: {' '.join(cmd)}\n{result.stderr}")
     return result
@@ -55,7 +59,7 @@ def measure_loudness(path: Path, config: AppConfig | None = None) -> dict:
         "-af", "loudnorm=print_format=json",
         "-f", "null", "-",
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if result.returncode != 0:
         raise FFmpegError(f"loudnorm measure failed for {path}: {result.stderr.strip()}")
     return _parse_loudnorm_json(result.stderr)
@@ -71,7 +75,7 @@ def measure_mean_volume(path: Path, start: float, duration: float, config: AppCo
         "-af", "volumedetect",
         "-f", "null", "-",
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if result.returncode != 0:
         raise FFmpegError(f"volumedetect failed for {path}: {result.stderr.strip()}")
     match = re.search(r"mean_volume:\s*(-?\d+(?:\.\d+)?) dB", result.stderr)
@@ -96,7 +100,9 @@ def decode_pcm_s16le_mono(path: Path, config: AppConfig | None = None) -> bytes:
 
 def ffmpeg_version(config: AppConfig | None = None) -> str:
     ffmpeg, _ = resolve_ffmpeg_binaries(config)
-    result = subprocess.run([str(ffmpeg), "-version"], capture_output=True, text=True)
+    result = subprocess.run(
+        [str(ffmpeg), "-version"], capture_output=True, text=True, encoding="utf-8", errors="replace"
+    )
     return result.stdout.splitlines()[0] if result.stdout else "unknown"
 
 
