@@ -3,7 +3,7 @@ click==8.1.8
 pydantic==2.9.2
 PyYAML==6.0.2
 rich==13.9.2
-pytest==8.3.3
+pytest==9.0.3
 faster-whisper==1.2.1
 # macOS only: PyAV >=19 dropped av.open(metadata_errors=...), which faster-whisper
 # 1.2.1 passes. Marker keeps Windows installs unchanged.
