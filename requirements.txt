@@ -5,6 +5,9 @@ PyYAML==6.0.2
 rich==13.9.2
 pytest==8.3.3
 faster-whisper==1.2.1
+# macOS only: PyAV >=19 dropped av.open(metadata_errors=...), which faster-whisper
+# 1.2.1 passes. Marker keeps Windows installs unchanged.
+av==15.1.0; sys_platform == "darwin"
 opencc-python-reimplemented==0.1.7
 numpy>=2.0
 scipy>=1.13

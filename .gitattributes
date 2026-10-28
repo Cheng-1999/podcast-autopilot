@@ -1,1 +1,4 @@
 graphify-out/graph.json merge=graphify
+# macOS launcher scripts: keep LF even when checked out/edited on Windows
+*.sh text eol=lf
+*.command text eol=lf

@@ -413,6 +413,12 @@ point `parts` at your own audio to use it for real.
 
 ### Dashboard (recommended)
 
+**macOS:** `brew install ffmpeg`, then double-click `start-dashboard.command`
+(or run `./dashboard.sh [--port N] [--no-browser] [--lan]`). To get a
+Launchpad/Dock app, run `scripts/build-mac-app.sh` once; it creates
+`~/Applications/Podcast Autopilot.app`. It binds to localhost by default;
+pass `--lan` to listen on 0.0.0.0 like the Windows script.
+
 For one-click startup on Windows, double-click [`start-dashboard.bat`](start-dashboard.bat).
 It runs the complete setup flow below (virtual environment, Python dependencies,
 FFmpeg check, frontend build, and sample assets), then opens the dashboard at

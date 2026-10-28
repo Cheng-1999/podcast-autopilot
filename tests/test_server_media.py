@@ -88,10 +88,10 @@ def test_upload_registers_existing_path_without_copying(client, tmp_path):
     assert not (root / "media").exists()
 
 
-def test_upload_json_requires_absolute_existing_path(client):
+def test_upload_json_requires_absolute_existing_path(client, tmp_path):
     c, _root = client
     assert c.post("/api/uploads", json={"path": "relative/file.wav"}).status_code == 422
-    assert c.post("/api/uploads", json={"path": "C:/does/not/exist.wav"}).status_code == 404
+    assert c.post("/api/uploads", json={"path": str(tmp_path / "does" / "not" / "exist.wav")}).status_code == 404
 
 
 # --- episode creation ---------------------------------------------------------
