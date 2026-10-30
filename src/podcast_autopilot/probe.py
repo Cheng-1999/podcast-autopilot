@@ -6,8 +6,8 @@ from .config import AppConfig
 from .ffmpeg import measure_loudness, run_ffprobe_json
 
 
-def probe_audio(path: Path, config: AppConfig | None = None) -> dict:
-    """Return codec/format info (ffprobe) plus integrated loudness (ffmpeg loudnorm measure pass)."""
+def probe_audio_format(path: Path, config: AppConfig | None = None) -> dict:
+    """Return codec/format info (ffprobe) quickly without measuring loudness."""
     path = Path(path)
     info = run_ffprobe_json(path, config)
 
@@ -20,8 +20,6 @@ def probe_audio(path: Path, config: AppConfig | None = None) -> dict:
     duration_raw = fmt.get("duration") or stream.get("duration")
     duration = float(duration_raw) if duration_raw is not None else 0.0
 
-    loudness = measure_loudness(path, config)
-
     return {
         "path": str(path),
         "codec": stream.get("codec_name"),
@@ -29,8 +27,19 @@ def probe_audio(path: Path, config: AppConfig | None = None) -> dict:
         "channels": stream.get("channels"),
         "sample_fmt": stream.get("sample_fmt"),
         "duration": duration,
+    }
+
+
+def probe_audio(path: Path, config: AppConfig | None = None) -> dict:
+    """Return codec/format info (ffprobe) plus integrated loudness (ffmpeg loudnorm measure pass)."""
+    res = probe_audio_format(path, config)
+    loudness = measure_loudness(path, config)
+
+    res.update({
         "input_i": float(loudness.get("input_i", "nan")),
         "input_tp": float(loudness.get("input_tp", "nan")),
         "input_lra": float(loudness.get("input_lra", "nan")),
         "input_thresh": float(loudness.get("input_thresh", "nan")),
-    }
+    })
+    return res
+

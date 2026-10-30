@@ -1,0 +1,8 @@
+name: spotify
+ffmpeg_path: null
+denoise:
+  engine: auto
+voice_chain:
+  loudness_target_i: -14
+  loudness_target_tp: -1.5
+  loudness_target_lra: 11

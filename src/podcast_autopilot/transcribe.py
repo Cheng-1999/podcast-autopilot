@@ -1,0 +1,509 @@
+from __future__ import annotations
+
+import json
+import os
+from dataclasses import asdict, dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+
+from .config import AppConfig, DEFAULT_FILLER_WORDS, DEFAULT_MODELS_DIR
+from .plan import PlanItem
+
+TRANSCRIPT_SCHEMA_ID = "podcast-autopilot.transcript/v1"
+
+# Traditional Chinese, full-width punctuation: faster-whisper's "zh" language
+# tag tends to drift toward Simplified output regardless of this prompt, so
+# it is a nudge, not a guarantee -- the real fix is the opencc s2twp pass
+# applied to every segment/word after transcription.
+INITIAL_PROMPT_ZH_TW = "這是一段繁體中文的Podcast逐字稿，請使用正體中文與全形標點符號，例如：「」、，。！？"
+
+_MODEL_CACHE: dict[tuple[str, str], object] = {}
+
+
+@dataclass
+class Word:
+    word: str
+    start: float
+    end: float
+    probability: float
+
+
+@dataclass
+class Segment:
+    id: int
+    start: float
+    end: float
+    text: str
+    words: list[Word] = field(default_factory=list)
+
+
+def _load_model(model_size: str, compute_type: str = "int8", cpu_threads: int | None = None):
+    key = (model_size, compute_type)
+    if key not in _MODEL_CACHE:
+        # huggingface_hub lays the model cache out with symlinks; on Windows
+        # without Developer Mode / SeCreateSymbolicLinkPrivilege it warns, then
+        # still fails half-way through a download with WinError 1314 (seen on a
+        # fresh clone). Plain file copies in tools/models/ are all we need.
+        os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS", "1")
+        os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+        from faster_whisper import WhisperModel
+
+        if cpu_threads is None:
+            cpu_count = os.cpu_count() or 4
+            cpu_threads = min(8, max(2, cpu_count))
+
+        DEFAULT_MODELS_DIR.mkdir(parents=True, exist_ok=True)
+        _MODEL_CACHE[key] = WhisperModel(
+            model_size,
+            device="cpu",
+            compute_type=compute_type,
+            cpu_threads=cpu_threads,
+            download_root=str(DEFAULT_MODELS_DIR),
+        )
+    return _MODEL_CACHE[key]
+
+
+def _count_changed_chars(before: str, after: str) -> int:
+    """Rough diff count for the opencc s2twp post-pass log line, not a real alignment."""
+    changed = sum(1 for a, b in zip(before, after) if a != b)
+    changed += abs(len(before) - len(after))
+    return changed
+
+
+def transcribe_audio(
+    audio_path: Path,
+    model_size: str = "small",
+    config: AppConfig | None = None,
+    compute_type: str = "int8",
+    beam_size: int = 1,
+    language: str | None = None,
+) -> dict:
+    """Transcribe audio with faster-whisper (CTranslate2, CPU, int8), auto-detecting its spoken language.
+
+    Forcing every file to `language="zh"` (the old behavior) makes
+    non-Chinese audio come out as garbled, wrong Chinese-looking text --
+    the model happily "transcribes" English or Japanese speech into
+    nonsense Hanzi when told the language is fixed. `language` (falling
+    back to `config.whisper_language`) still lets a caller pin the
+    language when they know it; leaving both unset auto-detects per file.
+
+    word_timestamps and vad_filter are always on. The zh-TW initial
+    prompt nudge and the opencc s2twp post-pass (whisper's raw "zh"
+    output leans Simplified) are only applied when the resolved language
+    is Chinese -- applying either to other languages would bias or
+    corrupt their transcripts. The post-pass's changed-character count is
+    logged in the returned dict under "opencc_chars_changed" (0 when the
+    language isn't Chinese).
+    """
+    from faster_whisper.audio import decode_audio
+
+    audio_path = Path(audio_path)
+    model = _load_model(model_size, compute_type)
+
+    forced_language = language if language is not None else (config.whisper_language if config else None)
+    audio = decode_audio(str(audio_path))
+    if forced_language is None:
+        detected_language, _, _ = model.detect_language(audio, vad_filter=True)
+        resolved_language = detected_language
+    else:
+        resolved_language = forced_language
+    is_chinese = resolved_language == "zh"
+
+    raw_segments, info = model.transcribe(
+        audio,
+        language=resolved_language,
+        initial_prompt=INITIAL_PROMPT_ZH_TW if is_chinese else None,
+        word_timestamps=True,
+        vad_filter=True,
+        beam_size=beam_size,
+    )
+
+    converter = None
+    if is_chinese:
+        import opencc
+
+        converter = opencc.OpenCC("s2twp")
+
+    segments: list[Segment] = []
+    before_parts: list[str] = []
+    after_parts: list[str] = []
+    for idx, seg in enumerate(raw_segments):
+        raw_text = seg.text.strip()
+        text = converter.convert(raw_text) if converter else raw_text
+        before_parts.append(raw_text)
+        after_parts.append(text)
+        words = [
+            Word(
+                word=converter.convert(w.word.strip()) if converter else w.word.strip(),
+                start=w.start,
+                end=w.end,
+                probability=w.probability,
+            )
+            for w in (seg.words or [])
+        ]
+        segments.append(Segment(id=idx, start=seg.start, end=seg.end, text=text, words=words))
+
+    chars_changed = _count_changed_chars("".join(before_parts), "".join(after_parts))
+
+    return {
+        "schema": TRANSCRIPT_SCHEMA_ID,
+        "created": datetime.now(timezone.utc).isoformat(),
+        "source": {"path": str(audio_path)},
+        "model": {"size": model_size, "compute_type": compute_type, "device": "cpu"},
+        "language": info.language,
+        "language_probability": info.language_probability,
+        "opencc_chars_changed": chars_changed,
+        "segments": segments,
+    }
+
+
+def save_transcript(data: dict, path: Path) -> None:
+    plain = {**data, "segments": [asdict(s) for s in data["segments"]]}
+    Path(path).write_text(json.dumps(plain, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def load_transcript(path: Path) -> dict:
+    return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def words_from_transcript(data: dict) -> list[Word]:
+    """Flatten every segment's words into one time-ordered list (already absolute timestamps)."""
+    words: list[Word] = []
+    for seg in data["segments"]:
+        for w in seg["words"]:
+            words.append(Word(word=w["word"], start=w["start"], end=w["end"], probability=w["probability"]))
+    return words
+
+
+def _format_srt_timestamp(seconds: float) -> str:
+    ms_total = max(0, round(seconds * 1000))
+    hours, rem = divmod(ms_total, 3_600_000)
+    minutes, rem = divmod(rem, 60_000)
+    secs, ms = divmod(rem, 1000)
+    return f"{hours:02d}:{minutes:02d}:{secs:02d},{ms:03d}"
+
+
+def write_srt(segments: list[Segment], path: Path) -> None:
+    lines: list[str] = []
+    for idx, seg in enumerate(segments, start=1):
+        lines.append(str(idx))
+        lines.append(f"{_format_srt_timestamp(seg.start)} --> {_format_srt_timestamp(seg.end)}")
+        lines.append(seg.text)
+        lines.append("")
+    Path(path).write_text("\n".join(lines), encoding="utf-8")
+
+
+def _format_mm_ss(seconds: float) -> str:
+    total = max(0, int(seconds))
+    minutes, secs = divmod(total, 60)
+    return f"{minutes:02d}:{secs:02d}"
+
+
+def write_markdown(segments: list[Segment], path: Path) -> None:
+    paragraphs = [f"[{_format_mm_ss(seg.start)}] {seg.text}" for seg in segments]
+    Path(path).write_text("\n\n".join(paragraphs) + ("\n" if paragraphs else ""), encoding="utf-8")
+
+
+def _load_audio_for_energy(audio_path: Path | str):
+    """Open the audio file once (mmap'd, so pages are only faulted in as
+    touched) so `detect_fillers` can call `find_energy_bounds` for every
+    candidate in an episode without re-opening a (potentially very large,
+    e.g. OneDrive-synced) WAV file per call."""
+    try:
+        import scipy.io.wavfile as wavfile
+
+        sr, data = wavfile.read(audio_path, mmap=True)
+        if data.ndim > 1:
+            data = data[:, 0]
+        return sr, data
+    except Exception:
+        return None
+
+
+def find_energy_bounds(
+    audio_data,
+    search_start: float,
+    search_end: float,
+    word_start: float,
+    word_end: float,
+    min_silence_rms: float = 0.01,
+) -> tuple[float, float]:
+    """Snap word boundaries to acoustic speech onset and offset using a
+    pre-loaded `(sample_rate, samples)` pair (see `_load_audio_for_energy`).
+
+    Whisper word-level alignment often lags true acoustic speech onset (especially
+    on multi-syllable Chinese particles like '然後' or words following pauses).
+    This inspects the RMS energy within the surrounding silence gap to find when
+    speech actually begins and ends.
+    """
+    if audio_data is None:
+        return word_start, word_end
+    try:
+        import numpy as np
+
+        sr, data = audio_data
+        duration = len(data) / sr
+        search_start = max(0.0, search_start)
+        search_end = min(duration, search_end)
+        if search_start >= search_end:
+            return word_start, word_end
+
+        i0 = int(search_start * sr)
+        i1 = int(search_end * sr)
+        chunk_data = np.array(data[i0:i1], dtype=np.float32)
+        win = int(0.02 * sr)
+        hop = int(0.005 * sr)
+        if len(chunk_data) < win:
+            return word_start, word_end
+
+        times = []
+        rms_vals = []
+        for idx in range(0, len(chunk_data) - win, hop):
+            w_chunk = chunk_data[idx : idx + win]
+            rms = float(np.sqrt(np.mean(w_chunk**2)))
+            times.append(search_start + idx / sr)
+            rms_vals.append(rms)
+
+        if not rms_vals:
+            return word_start, word_end
+
+        peak_rms = max(rms_vals)
+        thresh = max(min_silence_rms, 0.05 * peak_rms)
+
+        onset = word_start
+        for t, r in zip(times, rms_vals):
+            if t <= word_start and r > thresh:
+                onset = max(search_start, t - 0.02)
+                break
+
+        offset = word_end
+        for t, r in zip(reversed(times), reversed(rms_vals)):
+            if t >= word_end and r > thresh:
+                offset = min(search_end, t + win / sr + 0.02)
+                break
+
+        return round(onset, 3), round(offset, 3)
+    except Exception:
+        return word_start, word_end
+
+
+def detect_fillers(
+    words: list[Word],
+    filler_words: list[str] | None = None,
+    pause_threshold_s: float = 0.2,
+    min_probability: float = 0.5,
+    pre_roll_s: float = 0.0,
+    post_roll_s: float = 0.0,
+    guard_s: float = 0.05,
+    audio_path: Path | str | None = None,
+) -> list[dict]:
+    """Flag filler-word candidates that are isolated by pauses on both sides.
+
+    A word only qualifies when: its stripped text is one of `filler_words`,
+    its probability is above `min_probability`, and the gap to the previous
+    word's end and to the next word's start are both greater than
+    `pause_threshold_s`. The first and last word of the list have no
+    neighbour on one side, so a pause there cannot be confirmed and they are
+    never proposed (fail closed: a proposal must be backed by two measured
+    pauses).
+    """
+    filler_set = set(filler_words) if filler_words is not None else set(DEFAULT_FILLER_WORDS)
+    candidates: list[dict] = []
+    has_audio = audio_path is not None and Path(audio_path).is_file()
+    # Loaded once (mmap'd) and reused for every candidate below -- an episode's
+    # clean.wav can be hundreds of MB, and this file may live on a
+    # cloud-synced drive (e.g. OneDrive), so re-opening it per filler word (a
+    # 66-minute episode can have hundreds of them) previously multiplied I/O
+    # latency badly enough to make plan-fillers appear to hang for hours.
+    audio_data = _load_audio_for_energy(audio_path) if has_audio else None
+
+    for i in range(1, len(words) - 1):
+        w = words[i]
+        token = w.word.strip()
+        if token not in filler_set:
+            continue
+        if w.probability <= min_probability:
+            continue
+        prev_gap = w.start - words[i - 1].end
+        next_gap = words[i + 1].start - w.end
+        if prev_gap <= pause_threshold_s or next_gap <= pause_threshold_s:
+            continue
+
+        cand_start = max(words[i - 1].end + guard_s, w.start - pre_roll_s)
+        cand_end = min(words[i + 1].start - guard_s, w.end + post_roll_s)
+
+        if audio_data is not None:
+            search_start = words[i - 1].end + guard_s
+            search_end = words[i + 1].start - guard_s
+            cand_start, cand_end = find_energy_bounds(
+                audio_data=audio_data,
+                search_start=search_start,
+                search_end=search_end,
+                word_start=cand_start,
+                word_end=cand_end,
+            )
+
+        candidates.append({
+            "word": token,
+            "start": round(cand_start, 3),
+            "end": round(cand_end, 3),
+            "probability": w.probability,
+        })
+    return candidates
+
+
+FILLER_MATCH_TOLERANCE_S = 0.001
+
+
+def _filler_index(item_id: str) -> int:
+    try:
+        return int(item_id.rsplit("-", 1)[1])
+    except (IndexError, ValueError):
+        return 0
+
+
+def _find_matching_filler(
+    candidate: dict,
+    existing_fillers: list[PlanItem],
+    matched_ids: set[str],
+) -> PlanItem | None:
+    """Find the existing filler item corresponding to `candidate`.
+
+    Matches either:
+    1. Exact boundary match within FILLER_MATCH_TOLERANCE_S.
+    2. Overlapping span (or close proximity with matching word) when detection
+       boundaries shifted due to energy-onset snapping or pre/post-roll padding.
+    """
+    for it in existing_fillers:
+        if it.id in matched_ids:
+            continue
+        if (
+            abs(it.start - candidate["start"]) <= FILLER_MATCH_TOLERANCE_S
+            and abs(it.end - candidate["end"]) <= FILLER_MATCH_TOLERANCE_S
+        ):
+            return it
+
+    cand_start = candidate["start"]
+    cand_end = candidate["end"]
+    cand_word = candidate.get("word", "").strip()
+
+    best_match: PlanItem | None = None
+    best_score: float = -1.0
+
+    for it in existing_fillers:
+        if it.id in matched_ids:
+            continue
+        overlap = min(it.end, cand_end) - max(it.start, cand_start)
+        word_matches = bool(
+            cand_word and (
+                it.reason == f"filler:{cand_word}"
+                or it.reason.startswith(f"filler:{cand_word} ")
+                or f":{cand_word}" in it.reason
+            )
+        )
+        if overlap > 0:
+            score = overlap + (10.0 if word_matches else 0.0)
+            if score > best_score:
+                best_score = score
+                best_match = it
+        elif word_matches:
+            dist = max(0.0, max(it.start, cand_start) - min(it.end, cand_end))
+            if dist <= 0.5:
+                score = 5.0 - dist
+                if score > best_score:
+                    best_score = score
+                    best_match = it
+
+    return best_match
+
+
+def merge_filler_items(
+    existing_items: list[PlanItem],
+    candidates: list[dict],
+    keep_spans: list[tuple[float, float]] | None = None,
+) -> list[PlanItem]:
+    """Return the plan's item list with filler proposals replaced by `candidates`, idempotently.
+
+    - A candidate that matches an existing filler item (either exact within
+      FILLER_MATCH_TOLERANCE_S, or overlapping/shifted due to energy-onset
+      snapping/padding) updates that item's [start, end] boundaries and reason
+      to the newly detected boundaries, while preserving its id and any
+      `enabled=true` a human already set.
+    - Existing disabled filler proposals that no longer match any candidate
+      are dropped (they were only ever proposals).
+    - Existing *enabled* filler items that no longer match are kept: a human
+      decision is never silently discarded by re-running detection.
+    - Remaining candidates become new disabled proposals numbered after the
+      highest surviving filler index.
+    Running this twice with the same transcript yields the same item list,
+    so plan-fillers never accumulates duplicate (overlapping) proposals.
+    """
+    if keep_spans is not None:
+        candidates = [
+            c for c in candidates
+            if any(ks <= c["start"] and c["end"] <= ke for ks, ke in keep_spans)
+        ]
+
+    non_filler = [it for it in existing_items if it.kind != "filler"]
+    existing_fillers = [it for it in existing_items if it.kind == "filler"]
+
+    kept: list[PlanItem] = []
+    unmatched: list[dict] = []
+    matched_ids: set[str] = set()
+    for c in candidates:
+        match = _find_matching_filler(c, existing_fillers, matched_ids)
+        if match is not None:
+            matched_ids.add(match.id)
+            cand_word = c.get("word", "")
+            cand_prob = c.get("probability", 1.0)
+            reason = f"filler:{cand_word} p={cand_prob:.2f}" if cand_word else (match.reason or "filler")
+            updated = PlanItem(
+                id=match.id,
+                kind=match.kind,
+                start=c["start"],
+                end=c["end"],
+                reason=reason,
+                enabled=match.enabled,
+            )
+            kept.append(updated)
+        else:
+            unmatched.append(c)
+
+    for it in existing_fillers:
+        if it.id not in matched_ids and it.enabled:
+            kept.append(it)
+
+    if keep_spans is not None:
+        kept = [
+            it for it in kept
+            if any(ks <= it.start and it.end <= ke for ks, ke in keep_spans)
+        ]
+
+    next_index = max((_filler_index(it.id) for it in kept), default=0) + 1
+    new_items = filler_plan_items(unmatched, start_index=next_index)
+    return sorted(non_filler + kept + new_items, key=lambda it: it.start)
+
+
+def filler_plan_items(
+    candidates: list[dict],
+    start_index: int = 1,
+    pre_roll_s: float = 0.0,
+    post_roll_s: float = 0.0,
+) -> list[PlanItem]:
+    """Build disabled 'filler' PlanItems (proposals only) from detect_fillers() output."""
+    items = []
+    for offset, c in enumerate(candidates):
+        idx = start_index + offset
+        start = max(0.0, c["start"] - pre_roll_s)
+        end = c["end"] + post_roll_s
+        items.append(
+            PlanItem(
+                id=f"filler-{idx:04d}",
+                kind="filler",
+                start=round(start, 3),
+                end=round(end, 3),
+                reason=f"filler:{c['word']} p={c['probability']:.2f}",
+                enabled=False,
+            )
+        )
+    return items

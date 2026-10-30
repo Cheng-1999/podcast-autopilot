@@ -1,0 +1,214 @@
+import React, { useState } from "react";
+import { ALL_PIPELINE_STAGES } from "../api/sse";
+import { useLocale } from "../i18n";
+import { formatCount } from "../lib/format";
+
+interface RunControlsProps {
+  profiles: string[];
+  isRunning: boolean;
+  profile: string;
+  model: string;
+  onProfileChange: (profile: string) => void;
+  onModelChange: (model: string) => void;
+  onRun: (options: { profile: string; model: string; force: boolean; skip: string[] }) => void;
+  onCancel: () => void;
+}
+
+export const RunControls: React.FC<RunControlsProps> = ({
+  profiles,
+  isRunning,
+  profile,
+  model,
+  onProfileChange,
+  onModelChange,
+  onRun,
+  onCancel,
+}) => {
+  const { t, locale } = useLocale();
+  const [force, setForce] = useState<boolean>(false);
+  const [skipStages, setSkipStages] = useState<string[]>([]);
+  const [showSkipDropdown, setShowSkipDropdown] = useState<boolean>(false);
+
+  const toggleSkipStage = (stage: string) => {
+    setSkipStages((prev) =>
+      prev.includes(stage) ? prev.filter((s) => s !== stage) : [...prev, stage]
+    );
+  };
+
+  const handleRun = () => {
+    if (isRunning) return;
+    onRun({ profile, model, force, skip: skipStages });
+  };
+
+  return (
+    <div
+      data-tour="run-controls"
+      style={{
+        display: "flex",
+        flexWrap: "wrap",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: "12px",
+        padding: "10px 14px",
+        backgroundColor: "var(--surface-panel)",
+        border: "var(--border-subtle)",
+        borderRadius: "var(--radius-max)",
+      }}
+    >
+      {/* Configuration Controls */}
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "14px" }}>
+        {/* Profile */}
+        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+          <label className="label-caps" htmlFor="profile-select">
+            {t("controls.profile")}:
+          </label>
+          <select
+            id="profile-select"
+            className="dense-select"
+            value={profile}
+            onChange={(e) => onProfileChange(e.target.value)}
+            disabled={isRunning}
+          >
+            {profiles.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Model */}
+        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+          <label className="label-caps" htmlFor="model-select">
+            {t("controls.model")}:
+          </label>
+          <select
+            id="model-select"
+            className="dense-select"
+            value={model}
+            onChange={(e) => onModelChange(e.target.value)}
+            disabled={isRunning}
+          >
+            <option value="small">small ({t("controls.fast")})</option>
+            <option value="medium">medium ({t("controls.accurate")})</option>
+            <option value="large-v3">large-v3 ({t("controls.high")})</option>
+          </select>
+        </div>
+
+        {/* Force Checkbox */}
+        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+          <input
+            id="force-check"
+            type="checkbox"
+            checked={force}
+            onChange={(e) => setForce(e.target.checked)}
+            disabled={isRunning}
+            style={{
+              accentColor: "var(--semantic-blue)",
+              cursor: isRunning ? "not-allowed" : "pointer",
+            }}
+          />
+          <label
+            htmlFor="force-check"
+            className="mono"
+            style={{
+              fontSize: "var(--font-size-xs)",
+              color: "var(--text-primary)",
+              cursor: isRunning ? "not-allowed" : "pointer",
+            }}
+          >
+            {t("controls.force")}
+          </label>
+        </div>
+
+        {/* Skip Multi-select */}
+        <div style={{ position: "relative" }}>
+          <button
+            type="button"
+            className="dense-btn"
+            onClick={() => setShowSkipDropdown(!showSkipDropdown)}
+            disabled={isRunning}
+          >
+            <span className="label-caps">{t("controls.skip")}:</span>
+            <span className="mono" style={{ color: "var(--semantic-blue)" }}>
+              {skipStages.length > 0 ? t("controls.skipped", { count: formatCount(skipStages.length, locale) }) : t("common.none")}
+            </span>
+          </button>
+
+          {showSkipDropdown && (
+            <div
+              style={{
+                position: "absolute",
+                top: "100%",
+                left: 0,
+                marginTop: "4px",
+                backgroundColor: "var(--surface-elevated)",
+                border: "var(--border-subtle)",
+                borderRadius: "var(--radius-max)",
+                padding: "6px 8px",
+                zIndex: 20,
+                boxShadow: "none",
+                display: "flex",
+                flexDirection: "column",
+                gap: "4px",
+                minWidth: "160px",
+              }}
+            >
+              {ALL_PIPELINE_STAGES.map((stage) => {
+                const checked = skipStages.includes(stage);
+                return (
+                  <label
+                    key={stage}
+                    className="mono"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      fontSize: "var(--font-size-xs)",
+                      cursor: "pointer",
+                      padding: "2px 4px",
+                      color: checked ? "var(--text-primary)" : "var(--text-muted)",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleSkipStage(stage)}
+                      style={{ accentColor: "var(--semantic-blue)" }}
+                    />
+                    {stage}
+                  </label>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Action Buttons with keyboard hints */}
+      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        <button
+          type="button"
+          data-testid="run-button"
+          className="dense-btn primary"
+          onClick={handleRun}
+          disabled={isRunning}
+        >
+          <span>{t("controls.run")}</span>
+          <span className="kbd-hint" style={{ color: "#0F1216", backgroundColor: "rgba(0,0,0,0.15)" }}>
+            r
+          </span>
+        </button>
+
+        <button
+          type="button"
+          className="dense-btn danger"
+          onClick={onCancel}
+          disabled={!isRunning}
+        >
+          <span>{t("controls.cancel")}</span>
+        </button>
+      </div>
+    </div>
+  );
+};

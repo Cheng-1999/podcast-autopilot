@@ -19,6 +19,7 @@ class SourceInfo(BaseModel):
 class ProfileInfo(BaseModel):
     name: str
     sha256: str | None = None
+    max_removed_fraction: float = 0.25
 
 
 class PlanItem(BaseModel):
@@ -55,6 +56,7 @@ class EditPlan(BaseModel):
     profile: ProfileInfo
     items: list[PlanItem]
     render: RenderSettings = Field(default_factory=RenderSettings)
+    predicted_duration: float | None = None
 
     @field_validator("schema_id")
     @classmethod

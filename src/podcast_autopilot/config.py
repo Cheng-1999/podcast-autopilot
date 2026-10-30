@@ -2,13 +2,19 @@ from __future__ import annotations
 
 import os
 import shutil
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_TOOLS_BIN = PROJECT_ROOT / "tools" / "ffmpeg" / "bin"
+DEFAULT_MODELS_DIR = PROJECT_ROOT / "tools" / "models"
+
+# Isolated filler tokens; multi-character entries only match if faster-whisper's
+# word-level alignment happens to emit them as a single word (CJK word
+# boundaries are not guaranteed, see README).
+DEFAULT_FILLER_WORDS: tuple[str, ...] = ("嗯", "呃", "啊", "那個", "就是說", "然後")
 
 
 class FFmpegNotFoundError(RuntimeError):
@@ -21,17 +27,139 @@ class AppConfig:
     loudness_target_i: float = -16.0
     loudness_target_tp: float = -1.5
     profile_name: str = "default"
+    pauses: "PauseConfig" = None  # type: ignore[assignment]
+    whisper_model_size: str = "small"
+    whisper_language: str | None = None  # None = auto-detect per file; else pin e.g. "zh", "en"
+    filler_words: list[str] = field(default_factory=lambda: list(DEFAULT_FILLER_WORDS))
+    filler_pause_threshold_s: float = 0.2
+    filler_min_probability: float = 0.5
+    filler_pre_roll_s: float = 0.15
+    filler_post_roll_s: float = 0.05
+    filler_carve_padding_start_s: float = 0.0
+    filler_carve_padding_end_s: float = 0.0
+    denoise_engine: str = "auto"
+    voice_chain: "VoiceChainConfig" = None  # type: ignore[assignment]
+    clips: "ClipsConfig" = None  # type: ignore[assignment]
+    # A CLI to shell out to for AI-suggested cuts (e.g. ["claude", "-p"], ["codex", "exec"]).
+    # None (the default) disables the feature entirely -- nothing is ever invoked or sent
+    # anywhere unless a profile opts in explicitly. See ai_suggest.py.
+    ai_suggest_command: list[str] | None = None
+    ai_suggest_timeout_s: float = 120.0
+
+    def __post_init__(self) -> None:
+        if self.pauses is None:
+            self.pauses = PauseConfig()
+        if self.voice_chain is None:
+            self.voice_chain = VoiceChainConfig(denoise_engine=self.denoise_engine)
+        if self.clips is None:
+            self.clips = ClipsConfig()
+
+
+@dataclass
+class PauseConfig:
+    noise: str = "0LU"  # relative to integrated loudness; "-35dB" = absolute dBFS
+    min_duration: float = 0.6
+    max_keep: float = 1.5
+    target: float = 0.6
+    guard: float = 0.15
+    min_segment: float = 0.5
+    head: float = 0.3
+    tail: float = 1.0
+    max_removed_fraction: float = 0.25
+
+
+@dataclass
+class ClipsConfig:
+    # User-editable topic keywords scored by `clips` (profile.clips.keywords);
+    # empty by default so a profile with no opinion on topic just skips that
+    # scoring component instead of matching everything.
+    keywords: list[str] = field(default_factory=list)
+    min_duration: float = 30.0
+    max_duration: float = 90.0
+    pause_threshold_s: float = 0.4
+
+
+@dataclass
+class VoiceChainConfig:
+    denoise_engine: str = "auto"
+    highpass_hz: float = 80.0
+    deesser_enabled: bool = True
+    deesser_frequency: float = 0.5
+    deesser_intensity: float = 0.3
+    deesser_max: float = 0.5
+    compressor_threshold_db: float = -18.0
+    compressor_ratio: float = 3.0
+    compressor_attack_ms: float = 15.0
+    compressor_release_ms: float = 250.0
+    loudness_target_i: float = -16.0
+    loudness_target_tp: float = -1.5
+    loudness_target_lra: float = 11.0
+    adeclick: bool = False
+    adeclip: bool = False
 
 
 def load_config(config_path: Path | None = None) -> AppConfig:
     if config_path is None or not config_path.is_file():
         return AppConfig()
     data = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    pauses = data.get("pauses") or {}
+    voice = data.get("voice_chain") or {}
+    clips = data.get("clips") or {}
+    denoise = data.get("denoise") or {}
+    engine = str(denoise.get("engine", voice.get("denoise_engine", "auto")))
+    ai_suggest = data.get("ai_suggest") or {}
+    ai_suggest_command = ai_suggest.get("command")
     return AppConfig(
         ffmpeg_path=data.get("ffmpeg_path"),
         loudness_target_i=float(data.get("loudness_target_i", -16.0)),
         loudness_target_tp=float(data.get("loudness_target_tp", -1.5)),
         profile_name=str(data.get("name", "default")),
+        whisper_model_size=str(data.get("whisper_model_size", "small")),
+        whisper_language=data.get("whisper_language") or None,
+        filler_words=list(data.get("filler_words", DEFAULT_FILLER_WORDS)),
+        filler_pause_threshold_s=float(data.get("filler_pause_threshold_s", 0.2)),
+        filler_min_probability=float(data.get("filler_min_probability", 0.5)),
+        filler_pre_roll_s=float(data.get("filler_pre_roll_s", 0.15)),
+        filler_post_roll_s=float(data.get("filler_post_roll_s", 0.05)),
+        filler_carve_padding_start_s=float(data.get("filler_carve_padding_start_s", 0.0)),
+        filler_carve_padding_end_s=float(data.get("filler_carve_padding_end_s", 0.0)),
+        denoise_engine=engine,
+        ai_suggest_command=list(ai_suggest_command) if ai_suggest_command else None,
+        ai_suggest_timeout_s=float(ai_suggest.get("timeout_s", 120.0)),
+        clips=ClipsConfig(
+            keywords=list(clips.get("keywords", [])),
+            min_duration=float(clips.get("min_duration", 30.0)),
+            max_duration=float(clips.get("max_duration", 90.0)),
+            pause_threshold_s=float(clips.get("pause_threshold_s", 0.4)),
+        ),
+        voice_chain=VoiceChainConfig(
+            denoise_engine=engine,
+            highpass_hz=float(voice.get("highpass_hz", 80.0)),
+            deesser_enabled=bool(voice.get("deesser_enabled", True)),
+            deesser_frequency=float(voice.get("deesser_frequency", 0.5)),
+            deesser_intensity=float(voice.get("deesser_intensity", 0.3)),
+            deesser_max=float(voice.get("deesser_max", 0.5)),
+            compressor_threshold_db=float(voice.get("compressor_threshold_db", -18.0)),
+            compressor_ratio=float(voice.get("compressor_ratio", 3.0)),
+            compressor_attack_ms=float(voice.get("compressor_attack_ms", 15.0)),
+            compressor_release_ms=float(voice.get("compressor_release_ms", 250.0)),
+            loudness_target_i=float(voice.get("loudness_target_i", data.get("loudness_target_i", -16.0))),
+            loudness_target_tp=float(voice.get("loudness_target_tp", data.get("loudness_target_tp", -1.5))),
+            loudness_target_lra=float(voice.get("loudness_target_lra", 11.0)),
+            adeclick=bool(voice.get("adeclick", False)),
+            adeclip=bool(voice.get("adeclip", False)),
+        ),
+        pauses=PauseConfig(
+            noise=str(pauses.get("noise", "0LU")),
+            min_duration=float(pauses.get("min_duration", pauses.get("d", 0.6))),
+            max_keep=float(pauses.get("max_keep", 1.5)),
+            target=float(pauses.get("target", 0.6)),
+            guard=float(pauses.get("guard", 0.15)),
+            min_segment=float(pauses.get("min_segment", 0.5)),
+            head=float(pauses.get("head", 0.3)),
+            tail=float(pauses.get("tail", 1.0)),
+            max_removed_fraction=float(pauses.get("max_removed_fraction", 0.25)),
+        ),
     )
 
 
